@@ -1,0 +1,28 @@
+{# templates/admin/monitoring/components/_users_kpi_card.html.twig #}
+
+<div
+    class="users-kpi-card"
+    data-controller="users-kpi"
+    data-users-kpi-url="{{ path('admin_kpi_users') }}"
+    data-users-kpi-date-from=""
+    data-users-kpi-date-to=""
+    data-users-kpi-weekdays=""
+>
+    <div class="users-kpi-header">
+        <h3>UTILISATEURS</h3>
+    </div>
+
+    <div class="users-kpi-metrics">
+        {% include 'admin/_users_kpi_metric.html.twig' with {
+            label: 'Enregistrés',
+            valueId: 'registeredUsers',
+            icon: null
+        } %}
+
+        {% include 'admin/_users_kpi_metric.html.twig' with {
+            label: 'Actifs',
+            valueId: 'activeUsers',
+            icon: '★'
+        } %}
+    </div>
+</div>

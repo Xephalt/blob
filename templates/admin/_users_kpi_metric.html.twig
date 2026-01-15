@@ -1,0 +1,18 @@
+<div
+    class="users-kpi-metric"
+    data-users-kpi-target="{{ valueId }}"
+>
+    <div class="metric-header">
+        <span class="metric-label">{{ label }}</span>
+        {% if icon %}
+            <span class="metric-icon">{{ icon }}</span>
+        {% endif %}
+    </div>
+
+    <div class="metric-value">—</div>
+
+    <div class="metric-evolution metric-evolution--neutral">
+        <span class="triangle"></span>
+        <span class="percent">—</span>
+    </div>
+</div>
