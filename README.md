@@ -1,101 +1,327 @@
-Bon. Là on arrête de tourner autour du feu et on **diagnostique froidement**, parce que ton screenshot dit beaucoup plus que ce que tu crois.
-
-Je vais faire trois choses, dans l’ordre, sans fioritures :
-
-1. **Expliquer précisément pourquoi tu ne vois plus la requête réseau**
-2. **Montrer exactement ce qui ne peut pas marcher dans l’état actuel**
-3. **Te redonner les fichiers corrigés minimaux qui DOIVENT marcher**, en tenant compte de ton arbo `templates/admin/*`
+Très bien. On arrête de philosopher, on met **les deux controllers propres, complets, cohérents**, et surtout **qui marchent ensemble**.
+Lis-les une fois, copie-colle, puis on débogue seulement si la réalité ose encore résister.
 
 ---
 
-## 1️⃣ Pourquoi tu ne vois PLUS la requête réseau
+# ✅ `period_picker_controller.js`
 
-Sur ta capture console, on voit ceci très clairement :
+👉 Rôle unique :
 
-```
-period-picker #onChange
-details: { … }
-```
-
-👉 **L’event `period:change` est bien dispatché.**
-👉 **Le Period Picker fonctionne.**
-
-Mais dans le **Network**, il n’y a **aucune requête `/kpi/users?...`**.
-
-Conclusion factuelle, sans opinion :
-
-> ❌ **Le controller `users-kpi` ne fait PAS de fetch**
-> ❌ soit parce qu’il **n’est pas connecté**
-> ❌ soit parce qu’il **n’a pas l’URL**
-> ❌ soit parce qu’il **n’écoute pas l’event**
-
-On va vérifier ça point par point.
-
----
-
-## 2️⃣ Ce qui ne peut PAS marcher dans ton setup actuel
-
-### ❌ Problème n°1 – `data-users-kpi-url` n’est pas lu
-
-Dans ton Twig, tu as :
-
-```twig
-<div
-    class="metrics-card"
-    data-controller="users-kpi"
-    data-users-kpi-url="{{ url }}"
->
-```
-
-Mais **Stimulus ne lit PAS ça comme tu crois**.
-
-👉 Pour que `static values = { url: String }` fonctionne, il faut **EXACTEMENT** :
-
-```
-data-users-kpi-url-value="..."
-```
-
-Sans `-value`, **`this.urlValue === undefined`**
-Et donc :
+* lire **from / to / weekdays**
+* dispatcher **un event DOM qui bubble**
+* **aucune logique métier**, aucun fetch
 
 ```js
-fetch(undefined + '?' + params)
+// assets/controllers/period_picker_controller.js
+import { Controller } from '@hotwired/stimulus'
+
+export default class extends Controller {
+  static targets = ['from', 'to']
+  static values = {
+    weekdays: String // "1,2,3"
+  }
+
+  connect() {
+    this.emit()
+  }
+
+  onChange() {
+    this.emit()
+  }
+
+  emit() {
+    const payload = {
+      from: this.fromTarget?.value || null,
+      to: this.toTarget?.value || null,
+      weekdays: this.weekdaysValue || null
+    }
+
+    console.debug('[period-picker] emit', payload)
+
+    this.dispatch('change', {
+      detail: payload,
+      bubbles: true
+    })
+  }
+}
 ```
 
-➡️ **aucune requête réseau**, silencieusement.
+---
+
+# ✅ `users_kpi_controller.js`
+
+👉 Rôle unique :
+
+* écouter `period:change`
+* construire l’URL
+* fetcher
+* remplir les metrics
+
+Aucune dépendance à la chart. Aucun couplage foireux.
+
+```js
+// assets/controllers/users_kpi_controller.js
+import { Controller } from '@hotwired/stimulus'
+
+export default class extends Controller {
+  static values = {
+    url: String
+  }
+
+  static targets = ['metric']
+
+  connect() {
+    this.element.addEventListener('period:change', this.onPeriodChange)
+  }
+
+  disconnect() {
+    this.element.removeEventListener('period:change', this.onPeriodChange)
+  }
+
+  onPeriodChange = (event) => {
+    console.debug('[users-kpi] period change received', event.detail)
+    this.load(event.detail)
+  }
+
+  async load({ from, to, weekdays }) {
+    if (!this.urlValue) {
+      console.warn('[users-kpi] missing url')
+      return
+    }
+
+    const params = new URLSearchParams()
+
+    if (from) params.set('date_from', from)
+    if (to) params.set('date_to', to)
+    if (weekdays) params.set('weekdays', weekdays)
+
+    const url = `${this.urlValue}?${params.toString()}`
+
+    console.debug('[users-kpi] fetch', url)
+
+    const response = await fetch(url)
+    const data = await response.json()
+
+    this.render(data)
+  }
+
+  render(data) {
+    this.metricTargets.forEach((el) => {
+      const key = el.dataset.key
+      const metric = data[key]
+
+      if (!metric) return
+
+      el.querySelector('.metric-value').textContent = metric.count
+
+      const evolution = el.querySelector('.metric-evolution')
+      const percent = el.querySelector('.percent')
+
+      percent.textContent = `${metric.evolutionPercent}%`
+
+      evolution.classList.toggle('metric-evolution--up', metric.trend === 'up')
+      evolution.classList.toggle('metric-evolution--down', metric.trend === 'down')
+      evolution.classList.toggle('metric-evolution--neutral', metric.trend === 'neutral')
+    })
+  }
+}
+```
 
 ---
 
-### ❌ Problème n°2 – aucune preuve que `users-kpi` est connecté
+# 🔴 Conditions NON négociables pour que ça marche
 
-Dans ta console, on voit :
+1. **DOM parent commun**
 
-* `period-picker #onChange` ✅
-* **aucun log `users-kpi`** ❌
+```html
+<div data-controller="users-kpi">
+  <form data-controller="period-picker">...</form>
+  <div class="metrics-card">...</div>
+</div>
+```
 
-Donc soit :
+2. `bubbles: true` → déjà fait
+3. `data-users-kpi-url-value="/kpi/users"` bien présent
+4. Chaque metric :
 
-* le controller ne se connecte pas
-* soit il est chargé mais ne reçoit jamais l’event
-
-On va corriger ça **de manière vérifiable**.
+```html
+<div data-users-kpi-target="metric" data-key="registeredUsers">
+```
 
 ---
 
-## 3️⃣ Version corrigée MINIMALE (qui marche)
+# 🧠 Résumé brutal
 
-Je te redonne **LES FICHIERS**, pas des idées.
+* period-picker **parle**
+* users-kpi **écoute**
+* ils vivent **dans le même arbre DOM**
+* aucune magie
+* aucune dépendance cachée
+* architecture scalable
+
+Si après ça **rien ne se met à jour**, alors on regarde **le JSON exact** que `/kpi/users` renvoie, et on le corrige sans pitié.
+
+Très bien. Maintenant je vais être **chirurgical**, parce que là ton problème n’est **plus le JS**, c’est **l’assemblage**. Et oui, il y a **quelques fichiers à ajuster**, mais **peu**, et **tous ont une raison précise**.
+
+Je te fais la **liste exhaustive**, avec **quoi**, **pourquoi**, **ce que tu mets**, et **ce que tu ne touches plus après**.
 
 ---
 
-### 🧩 `templates/admin/metrics/_metrics_card.html.twig`
+# 🧱 Vue d’ensemble (ce qu’on construit)
+
+```
+admin/index.html.twig
+└── users-kpi (Stimulus)
+    ├── period-picker (Stimulus)
+    │   ├── date from
+    │   ├── date to
+    │   └── weekday picker
+    └── metrics-card
+        └── metrics (N)
+```
+
+👉 **UN seul flux** :
+`period-picker → event → users-kpi → fetch → render`
+
+---
+
+# ✅ FICHIERS À MODIFIER / CRÉER
+
+Je te les donne **dans l’ordre logique**.
+
+---
+
+## 1️⃣ `admin/index.html.twig` ✅ (léger ajustement)
+
+### 🎯 Pourquoi
+
+C’est **le point d’ancrage DOM commun**.
+Si les controllers ne partagent pas un parent, **rien ne remonte**.
+
+### ✅ Ce que tu dois avoir
 
 ```twig
 <div
-    class="metrics-card"
     data-controller="users-kpi"
-    data-users-kpi-url-value="{{ url }}"
+    data-users-kpi-url-value="{{ path('admin_kpi_users') }}"
 >
+    {% include 'admin/_users_kpi_filter.html.twig' %}
+    {% include 'metrics/_metrics_card_users.html.twig' %}
+</div>
+```
+
+❌ **Tu enlèves** :
+
+* `data-controller="users-kpi"` ailleurs
+* toute logique JS ici
+
+---
+
+## 2️⃣ `admin/_users_kpi_filter.html.twig` ✅ (obligatoire)
+
+### 🎯 Pourquoi
+
+C’est **le seul endroit** où vit le `period-picker`.
+
+### ✅ Contenu minimal viable
+
+```twig
+<form
+    data-controller="period-picker"
+    data-action="change->period-picker#onChange"
+>
+    <input
+        type="date"
+        data-period-picker-target="from"
+    />
+
+    <input
+        type="date"
+        data-period-picker-target="to"
+    />
+
+    {% include 'admin/weekday_filter.html.twig' %}
+</form>
+```
+
+⚠️ Important :
+
+* **pas de fetch**
+* **pas d’URL**
+* **pas de logique métier**
+
+---
+
+## 3️⃣ `admin/weekday_filter.html.twig` ⚠️ (petit ajustement)
+
+### 🎯 Pourquoi
+
+Il doit **mettre à jour `weekdaysValue`**, pas appeler un backend.
+
+### Exemple simple
+
+```twig
+<div
+    data-controller="weekday"
+    data-action="weekday:change->period-picker#onChange"
+>
+    {# boutons Lu Ma Me etc #}
+</div>
+```
+
+Et dans ton `weekday_controller.js`, tu dois faire :
+
+```js
+this.dispatch('change', {
+  detail: { weekdays: this.selected.join(',') },
+  bubbles: true
+})
+```
+
+---
+
+## 4️⃣ `metrics/_metrics_card_users.html.twig` ✅
+
+### 🎯 Pourquoi
+
+C’est **une carte spécialisée**, mais **structure générique**.
+
+### Ce que tu as est bon 👌
+
+Je rappelle juste la version correcte :
+
+```twig
+{% embed 'metrics/_metrics_card.html.twig' with {
+    title: 'UTILISATEURS'
+} %}
+    {% block metrics %}
+        {% include 'metrics/_metric.html.twig' with {
+            label: 'Enregistrés',
+            key: 'registeredUsers',
+            icon: null
+        } %}
+
+        {% include 'metrics/_metric.html.twig' with {
+            label: 'Actifs',
+            key: 'activeUsers',
+            icon: '★'
+        } %}
+    {% endblock %}
+{% endembed %}
+```
+
+---
+
+## 5️⃣ `metrics/_metrics_card.html.twig` ✅
+
+### 🎯 Pourquoi
+
+C’est **le container logique** des métriques.
+
+### Obligatoire
+
+```twig
+<div class="metrics-card">
     <h3>{{ title }}</h3>
 
     <div class="metrics">
@@ -104,137 +330,80 @@ Je te redonne **LES FICHIERS**, pas des idées.
 </div>
 ```
 
-⚠️ **LE `-value` EST OBLIGATOIRE**
+⚠️ Aucun `data-controller` ici.
 
 ---
 
-### 🧩 `templates/admin/metrics/_metric.html.twig`
+## 6️⃣ `metrics/_metric.html.twig` 🚨 CRITIQUE
 
-(ne change pas, il est OK)
+### 🎯 Pourquoi
+
+Si ça ne match pas le controller → **rien ne s’affiche**.
+
+### VERSION CORRECTE
 
 ```twig
-<div class="metric">
+<div
+    class="metric"
+    data-users-kpi-target="metric"
+    data-key="{{ key }}"
+>
     <div class="metric-header">
-        <span class="metric-label">{{ label }}</span>
-        {% if icon %}
-            <span class="metric-icon">{{ icon }}</span>
-        {% endif %}
+        <span>{{ label }}</span>
+        {% if icon %}<span>{{ icon }}</span>{% endif %}
     </div>
 
-    <div
-        class="metric-value"
-        data-metric-value="{{ key }}"
-    >—</div>
+    <div class="metric-value">—</div>
 
-    <div class="metric-evolution">
+    <div class="metric-evolution metric-evolution--neutral">
         <span class="triangle"></span>
-        <span
-            class="percent"
-            data-metric-percent="{{ key }}"
-        >—</span>
+        <span class="percent">—</span>
     </div>
 </div>
 ```
 
+❌ Erreur fréquente :
+
+* `data-target="users-kpi.metric"` ❌
+* `data-users-kpi-target="{{ key }}"` ❌
+
 ---
 
-### 🧩 `assets/controllers/users_kpi_controller.js` (corrigé + logs)
+# 🧪 Checklist DEBUG (à faire dans la console)
 
-```js
-import { Controller } from '@hotwired/stimulus'
+1. Tu changes une date
+   → log `[period-picker] emit`
 
-export default class extends Controller {
-  static values = {
-    url: String
-  }
+2. Tu vois
+   → `[users-kpi] period change received`
 
-  connect() {
-    console.log('[users-kpi] connected', this.urlValue)
+3. Tu vois
+   → `[users-kpi] fetch /kpi/users?...`
 
-    this.onPeriodChange = this.onPeriodChange.bind(this)
-    document.addEventListener('period:change', this.onPeriodChange)
-  }
+4. Le JSON contient :
 
-  disconnect() {
-    document.removeEventListener('period:change', this.onPeriodChange)
-  }
-
-  async onPeriodChange(event) {
-    console.log('[users-kpi] period change', event.detail)
-
-    const { params } = event.detail
-    await this.load(params)
-  }
-
-  async load(params = '') {
-    if (!this.urlValue) {
-      console.error('[users-kpi] missing urlValue')
-      return
-    }
-
-    const fullUrl = this.urlValue + '?' + params
-    console.log('[users-kpi] fetch', fullUrl)
-
-    const response = await fetch(fullUrl)
-    const data = await response.json()
-
-    console.log('[users-kpi] data', data)
-
-    this.renderMetric('registeredUsers', data.registeredUsers)
-    this.renderMetric('activeUsers', data.activeUsers)
-  }
-
-  renderMetric(key, metric) {
-    if (!metric) return
-
-    const valueEl = this.element.querySelector(
-      `[data-metric-value="${key}"]`
-    )
-    const percentEl = this.element.querySelector(
-      `[data-metric-percent="${key}"]`
-    )
-
-    if (!valueEl || !percentEl) return
-
-    valueEl.textContent = metric.count
-    percentEl.textContent =
-      (metric.evolutionPercent > 0 ? '+' : '') +
-      metric.evolutionPercent.toFixed(1) +
-      '%'
+```json
+{
+  "registeredUsers": {
+    "count": 235,
+    "trend": "up",
+    "evolutionPercent": 20.1
   }
 }
 ```
 
----
-
-## 4️⃣ Ce que TU dois voir maintenant (sinon on sait où creuser)
-
-Dans la console, quand tu changes une date :
-
-```
-[users-kpi] connected /admin/kpi/users
-[users-kpi] period change { params: "date_from=..."}
-[users-kpi] fetch /admin/kpi/users?date_from=...
-[users-kpi] data { registeredUsers: {...}, activeUsers: {...} }
-```
-
-Dans le **Network** :
-
-```
-GET /admin/kpi/users?date_from=...
-```
-
-Si **UNE seule** de ces lignes n’apparaît pas → on sait exactement où intervenir.
+Si un seul maillon manque → **ça ne marchera pas**.
 
 ---
 
-## 🧠 Conclusion (claire et nette)
+# 🧠 Conclusion honnête
 
-* ❌ Ce n’était **PAS** Twig
-* ❌ Ce n’était **PAS** le backend
-* ❌ Ce n’était **PAS** l’event
-* ✅ C’était **un mauvais binding Stimulus (`-value`)**, donc **URL undefined**
-* ✅ Résolu proprement, sans hacks
+* Tu n’as **pas trop de fichiers**
+* Tu avais juste **un arbre DOM cassé**
+* L’architecture est **bonne**
+* Maintenant elle est **cohérente**
 
-Tu es maintenant sur une base **saine, observable, extensible**.
-On peut ensuite brancher les messages, charts, exports, sans jamais re-toucher ce socle.
+Prochaine étape (quand tu veux) :
+👉 brancher **charts + metrics** sur **le même event**, proprement, sans spaghetti.
+
+Mais d’abord : fais marcher **CE pipeline**.
