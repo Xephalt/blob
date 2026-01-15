@@ -1,195 +1,223 @@
-Très bien. On arrête les envolées architecturales, on sort le tournevis, et on fait **un truc simple qui marche maintenant**.
-Objectif clair, périmètre clair, zéro magie.
+Bon. On va faire **simple, propre, et surtout cohérent avec ton visuel**.
+Pas d’architecture cosmique, pas de magie noire. Juste **une Metrics Card Users** qui :
+
+* a **le bon HTML / style**
+* dépend **uniquement** d’un endpoint `/kpi/users`
+* sait afficher **value + évolution**
+* est **facilement clonable** pour “Messages”, “Likes”, etc.
+
+Je te donne **exactement ce qu’il faut**, au format **copier-coller**.
 
 ---
 
-# 🎯 Objectif
+## 1️⃣ Dépendances réelles (claires, limitées)
 
-Construire **vite** :
+### La metrics card **dépend de** :
 
-* une UI **date picker + weekdays**
-* un **controller Stimulus**
-* qui déclenche une requête **exactement** de la forme :
+* ✅ un endpoint JSON `/kpi/users`
+* ✅ un controller Stimulus `metrics-card`
+* ❌ PAS du chart
+* ❌ PAS du date picker directement
+* ❌ PAS d’un DTO frontend compliqué
 
-```
-/kpi/users?date_from=2026-01-01&date_to=2026-01-15&weekdays=1,2
-```
-
-Pas de period DTO, pas de dispatch global, pas de refacto chart.
-Juste **UI → URL → fetch**. Point.
+Elle **reçoit juste des params** (date_from, date_to, weekdays) via l’URL.
 
 ---
 
-# 1️⃣ Twig – UI minimale (copier-coller)
+## 2️⃣ `_metrics_card_users.html.twig`
 
-### `templates/admin/_users_kpi_filters.html.twig`
+👉 **Ce fichier est spécifique Users**, mais basé sur une card générique.
 
 ```twig
+{# templates/metrics/_metrics_card_users.html.twig #}
+
 <div
-    class="kpi-filters"
-    data-controller="kpi-filters"
-    data-kpi-filters-url="{{ path('admin_kpi_users') }}"
+    class="metrics-card"
+    data-controller="metrics-card"
+    data-metrics-card-url="{{ path('admin_kpi_users') }}"
 >
-
-    <div class="d-flex align-items-center gap-2">
-
-        <label>Période</label>
-
-        <input
-            type="date"
-            data-kpi-filters-target="fromDate"
-            class="form-control"
-        />
-
-        <span>→</span>
-
-        <input
-            type="date"
-            data-kpi-filters-target="toDate"
-            class="form-control"
-        />
+    <div class="metrics-card-header">
+        <h3>UTILISATEURS</h3>
     </div>
 
-    <div class="d-flex gap-2 mt-2">
-        {% for i, day in {
-            1:'Lun',2:'Mar',3:'Mer',4:'Jeu',5:'Ven',6:'Sam',7:'Dim'
+    <div class="metrics-card-body metrics-grid">
+
+        {% include 'metrics/_metric.html.twig' with {
+            label: 'Enregistrés',
+            key: 'registeredUsers',
+            color: 'gold'
         } %}
-            <label class="form-check">
-                <input
-                    type="checkbox"
-                    class="form-check-input"
-                    value="{{ i }}"
-                    data-kpi-filters-target="weekday"
-                    checked
-                />
-                {{ day }}
-            </label>
-        {% endfor %}
-    </div>
 
+        {% include 'metrics/_metric.html.twig' with {
+            label: 'Actifs',
+            key: 'activeUsers',
+            color: 'green',
+            icon: '★'
+        } %}
+
+    </div>
 </div>
 ```
 
-👉 UI volontairement brute
-👉 Pas de CSS sophistiqué
-👉 Tout est **adressable en JS**
+---
+
+## 3️⃣ `_metric.html.twig` (atomique, réutilisable partout)
+
+```twig
+{# templates/metrics/_metric.html.twig #}
+
+<div
+    class="metric"
+    data-metrics-card-target="metric"
+    data-metric-key="{{ key }}"
+>
+    <div class="metric-header">
+        <span class="metric-label">
+            {{ label }}
+        </span>
+
+        {% if icon is defined %}
+            <span class="metric-icon">{{ icon }}</span>
+        {% endif %}
+    </div>
+
+    <div class="metric-value metric-value--{{ color|default('default') }}">
+        —
+    </div>
+
+    <div class="metric-evolution metric-evolution--neutral">
+        <span class="triangle"></span>
+        <span class="percent">—</span>
+    </div>
+</div>
+```
 
 ---
 
-# 2️⃣ Stimulus – Controller simple et lisible
+## 4️⃣ CSS minimal (pour matcher ton screenshot)
 
-### `assets/controllers/kpi_filters_controller.js`
+👉 **Juste ce qu’il faut**, pas un framework.
 
-```js
-import { Controller } from '@hotwired/stimulus'
+```css
+.metrics-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.08);
+}
 
-export default class extends Controller {
-  static targets = ['fromDate', 'toDate', 'weekday']
+.metrics-card-header h3 {
+  margin: 0 0 16px;
+  font-weight: 700;
+}
 
-  connect() {
-    // valeurs par défaut simples
-    const today = new Date().toISOString().slice(0, 10)
-    this.toDateTarget.value = today
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 32px;
+}
 
-    const from = new Date()
-    from.setDate(from.getDate() - 14)
-    this.fromDateTarget.value = from.toISOString().slice(0, 10)
+.metric-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
 
-    this.fetch()
-  }
+.metric-value {
+  font-size: 42px;
+  font-weight: 700;
+  margin: 8px 0;
+}
 
-  fetch() {
-    const from = this.fromDateTarget.value
-    const to = this.toDateTarget.value
+.metric-value--gold {
+  color: #d4b000;
+}
 
-    const weekdays = this.weekdayTargets
-      .filter(cb => cb.checked)
-      .map(cb => cb.value)
-      .join(',')
+.metric-value--green {
+  color: #0f5c50;
+}
 
-    const url =
-      `${this.data.get('url')}` +
-      `?date_from=${from}` +
-      `&date_to=${to}` +
-      `&weekdays=${weekdays}`
+.metric-evolution {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
 
-    console.log('[KPI USERS]', url)
+.metric-evolution--positive {
+  color: #2e7d32;
+}
 
-    fetch(url)
-      .then(r => r.json())
-      .then(data => {
-        // POUR L’INSTANT on log
-        // tu brancheras l’UI ensuite
-        console.log('[KPI DATA]', data)
-      })
-  }
+.metric-evolution--negative {
+  color: #c62828;
+}
 
-  // appelé automatiquement quand un input change
-  fromDateTargetConnected() {
-    this.fromDateTarget.addEventListener('change', () => this.fetch())
-  }
+.triangle {
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 10px solid currentColor;
+}
+```
 
-  toDateTargetConnected() {
-    this.toDateTarget.addEventListener('change', () => this.fetch())
-  }
+---
 
-  weekdayTargetConnected(target) {
-    target.addEventListener('change', () => this.fetch())
+## 5️⃣ Ce que le backend doit renvoyer (contrat clair)
+
+Ton endpoint `/kpi/users` doit renvoyer **exactement ça** (exemple) :
+
+```json
+{
+  "registeredUsers": {
+    "value": 235,
+    "evolutionPercent": 20.1,
+    "trend": "up"
+  },
+  "activeUsers": {
+    "value": 180,
+    "evolutionPercent": 20.1,
+    "trend": "up"
   }
 }
 ```
 
-👉 volontairement **verbeux**
-👉 aucune abstraction prématurée
-👉 facile à debugger
-👉 URL visible dans la console
+➡️ Rien d’autre n’est requis pour afficher la card.
 
 ---
 
-# 3️⃣ Utilisation dans ta page
+## 6️⃣ Ce que cette card **ne fait PAS** (volontairement)
 
-Dans ton `index.html.twig` :
+* ❌ elle ne connaît pas le date picker
+* ❌ elle ne connaît pas le chart
+* ❌ elle ne stocke pas d’état global
+* ❌ elle ne sait pas “pourquoi” les chiffres changent
 
-```twig
-{% include 'admin/_users_kpi_filters.html.twig' %}
-
-{% include 'metrics/_metrics_card_users.html.twig' %}
-```
-
-Rien d’autre.
+Elle **affiche**. Point.
 
 ---
 
-# 4️⃣ Ce que tu obtiens immédiatement
+## 7️⃣ Pourquoi c’est la bonne base (et pas du bullshit)
 
-* ✅ Un vrai date picker
-* ✅ Un filtre weekdays simple
-* ✅ Une URL correcte
-* ✅ Un fetch fonctionnel
-* ✅ Aucun impact chart
-* ✅ Aucune dépendance cachée
+* Tu peux créer :
 
-Tu peux maintenant :
+  * `_metrics_card_messages.html.twig`
+  * `_metrics_card_revenue.html.twig`
+  * `_metrics_card_usage.html.twig`
+* **sans toucher au JS**
+* **sans toucher au CSS**
+* **sans toucher au chart**
 
-* vérifier l’URL
-* vérifier le backend
-* brancher l’UI des metrics tranquillement
-
----
-
-# 5️⃣ Ce qu’on **ne fait PAS** maintenant (et c’est volontaire)
-
-* ❌ pas de period picker global
-* ❌ pas d’event bus
-* ❌ pas de DTO front
-* ❌ pas de refacto chart
-* ❌ pas de clean archi prématurée
-
-On fait marcher le produit **avant** de faire joli.
-C’est comme ça qu’on évite de “bien architecturer un truc cassé”.
+Tu voulais une base **qui scale sans devenir un enfer**.
+👉 Celle-ci le fait.
 
 ---
 
-Quand tu verras **les chiffres bouger** avec ce filtre,
-on passera à l’étape suivante proprement.
+Si tu veux, prochain pas logique :
 
+* je te donne **le metrics-card Stimulus controller exact**
+* ou on branche **le date picker dessus proprement**
+* ou on aligne le backend DTO avec ce contrat
+
+Mais là, **l’UI est enfin saine**.
