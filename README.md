@@ -1,409 +1,262 @@
-Très bien. On arrête de philosopher, on met **les deux controllers propres, complets, cohérents**, et surtout **qui marchent ensemble**.
-Lis-les une fois, copie-colle, puis on débogue seulement si la réalité ose encore résister.
+Bon. Respire. Rien de mystique, rien de Symfony qui “mange” tes données. C’est juste un **problème de chaîne d’événements cassée**. Et oui, ça arrive quand on compose Stimulus sans décider QUI parle à QUI. Bienvenue dans le monde réel.
+
+Je vais être très clair, et on repart **proprement**, sans magie.
 
 ---
 
-# ✅ `period_picker_controller.js`
+## 🎯 Objectif réel (rappel)
 
-👉 Rôle unique :
+* **Un seul point de vérité** : le *period picker* (dates + weekdays)
+* Il **émet un événement**
+* Les consommateurs (chart, users KPI, plus tard messages KPI, etc.) **écoutent**
+* Le weekday filter **ne déclenche rien tout seul**, il informe le period picker
 
-* lire **from / to / weekdays**
-* dispatcher **un event DOM qui bubble**
-* **aucune logique métier**, aucun fetch
+Actuellement, ton weekday controller déclenche `chart#onPeriodChange` directement.
+➡️ **Erreur conceptuelle** : il court-circuite le dispatcher.
+
+---
+
+# ✅ Architecture correcte (simple et scalable)
+
+```
+[date inputs] ┐
+               ├──▶ period-picker (Stimulus)
+[weekday UI]  ┘          |
+                           ├── dispatch("period:change", payload)
+                           |
+                ┌──────────┴───────────┐
+                ▼                      ▼
+           chart controller      users-kpi controller
+```
+
+---
+
+# 1️⃣ CE QUE TU DOIS CHANGER (résumé rapide)
+
+### ❌ À SUPPRIMER
+
+Dans `_weekday_filter.html.twig` :
+
+```twig
+data-action="change->weekday#toggle change->chart#onPeriodChange"
+```
+
+👉 **Le weekday ne parle PLUS au chart. Jamais.**
+
+---
+
+# 2️⃣ `_weekday_filter.html.twig` (corrigé)
+
+```twig
+<div class="dropdown" data-controller="weekday">
+    <button
+        class="btn btn-outline-secondary weekday-btn"
+        type="button"
+        data-bs-toggle="dropdown"
+    >
+        <div class="weekday-btn-content">
+            <div class="weekday-chips" data-weekday-target="chips">
+                <span class="weekday-placeholder">Tous les jours</span>
+            </div>
+            <div class="weekday-arrow">
+                <i class="fa-solid fa-chevron-down"></i>
+            </div>
+        </div>
+    </button>
+
+    <div class="dropdown-menu p-3">
+        {% for value, label in {
+            1:'Lundi',2:'Mardi',3:'Mercredi',4:'Jeudi',
+            5:'Vendredi',6:'Samedi',7:'Dimanche'
+        } %}
+            <div class="form-check">
+                <input
+                    class="form-check-input"
+                    type="checkbox"
+                    value="{{ value }}"
+                    id="weekday-{{ value }}"
+                    data-weekday-target="checkbox"
+                    data-action="change->weekday#toggle"
+                >
+                <label class="form-check-label" for="weekday-{{ value }}">
+                    {{ label }}
+                </label>
+            </div>
+        {% endfor %}
+    </div>
+
+    {# Valeurs exposées au parent #}
+    <div data-weekday-target="inputs"></div>
+</div>
+```
+
+---
+
+# 3️⃣ `weekday_controller.js` (corrigé)
+
+👉 **Il ne dispatch plus rien vers le chart**
+👉 **Il émet un événement DOM local que le period picker écoutera**
 
 ```js
-// assets/controllers/period_picker_controller.js
 import { Controller } from '@hotwired/stimulus'
 
 export default class extends Controller {
-  static targets = ['from', 'to']
-  static values = {
-    weekdays: String // "1,2,3"
+  static targets = ['checkbox', 'chips', 'inputs']
+
+  toggle() {
+    this.chipsTarget.innerHTML = ''
+    this.inputsTarget.innerHTML = ''
+
+    const checked = this.checkboxTargets.filter(cb => cb.checked)
+
+    if (checked.length === 0) {
+      this.renderPlaceholder()
+    } else {
+      checked.forEach(cb => {
+        this.renderChip(cb)
+        this.renderHiddenInput(cb)
+      })
+    }
+
+    // 🔥 EVENT UNIQUE ET PROPRE
+    this.element.dispatchEvent(
+      new CustomEvent('weekday:change', { bubbles: true })
+    )
   }
+
+  renderPlaceholder() {
+    const span = document.createElement('span')
+    span.className = 'weekday-placeholder'
+    span.textContent = 'Tous les jours'
+    this.chipsTarget.appendChild(span)
+  }
+
+  renderChip(checkbox) {
+    const chip = document.createElement('div')
+    chip.className = 'weekday-chip'
+    chip.textContent = checkbox.nextElementSibling.textContent.slice(0, 2)
+
+    chip.addEventListener('click', e => {
+      e.stopPropagation()
+      checkbox.checked = false
+      this.toggle()
+    })
+
+    this.chipsTarget.appendChild(chip)
+  }
+
+  renderHiddenInput(checkbox) {
+    const input = document.createElement('input')
+    input.type = 'hidden'
+    input.name = 'weekdays[]'
+    input.value = checkbox.value
+    this.inputsTarget.appendChild(input)
+  }
+}
+```
+
+---
+
+# 4️⃣ Le **period picker controller** (clé du système)
+
+👉 Lui seul écoute les dates + weekday
+👉 Lui seul dispatch `period:change`
+
+```js
+import { Controller } from '@hotwired/stimulus'
+
+export default class extends Controller {
+  static targets = ['from', 'to', 'form']
 
   connect() {
-    this.emit()
+    this.element.addEventListener('weekday:change', () => this.emit())
   }
 
-  onChange() {
+  onDateChange() {
     this.emit()
   }
 
   emit() {
-    const payload = {
-      from: this.fromTarget?.value || null,
-      to: this.toTarget?.value || null,
-      weekdays: this.weekdaysValue || null
-    }
+    const formData = new FormData(this.formTarget)
+    const params = new URLSearchParams(formData).toString()
 
-    console.debug('[period-picker] emit', payload)
-
-    this.dispatch('change', {
-      detail: payload,
-      bubbles: true
-    })
+    this.element.dispatchEvent(
+      new CustomEvent('period:change', {
+        bubbles: true,
+        detail: { params }
+      })
+    )
   }
 }
 ```
 
 ---
 
-# ✅ `users_kpi_controller.js`
+# 5️⃣ Chart controller (adaptation MINIMALE)
 
-👉 Rôle unique :
-
-* écouter `period:change`
-* construire l’URL
-* fetcher
-* remplir les metrics
-
-Aucune dépendance à la chart. Aucun couplage foireux.
+👉 Tu ne touches **pas** à `load()`
+👉 Tu ajoutes juste un listener
 
 ```js
-// assets/controllers/users_kpi_controller.js
-import { Controller } from '@hotwired/stimulus'
-
-export default class extends Controller {
-  static values = {
-    url: String
-  }
-
-  static targets = ['metric']
-
-  connect() {
-    this.element.addEventListener('period:change', this.onPeriodChange)
-  }
-
-  disconnect() {
-    this.element.removeEventListener('period:change', this.onPeriodChange)
-  }
-
-  onPeriodChange = (event) => {
-    console.debug('[users-kpi] period change received', event.detail)
-    this.load(event.detail)
-  }
-
-  async load({ from, to, weekdays }) {
-    if (!this.urlValue) {
-      console.warn('[users-kpi] missing url')
-      return
-    }
-
-    const params = new URLSearchParams()
-
-    if (from) params.set('date_from', from)
-    if (to) params.set('date_to', to)
-    if (weekdays) params.set('weekdays', weekdays)
-
-    const url = `${this.urlValue}?${params.toString()}`
-
-    console.debug('[users-kpi] fetch', url)
-
-    const response = await fetch(url)
-    const data = await response.json()
-
-    this.render(data)
-  }
-
-  render(data) {
-    this.metricTargets.forEach((el) => {
-      const key = el.dataset.key
-      const metric = data[key]
-
-      if (!metric) return
-
-      el.querySelector('.metric-value').textContent = metric.count
-
-      const evolution = el.querySelector('.metric-evolution')
-      const percent = el.querySelector('.percent')
-
-      percent.textContent = `${metric.evolutionPercent}%`
-
-      evolution.classList.toggle('metric-evolution--up', metric.trend === 'up')
-      evolution.classList.toggle('metric-evolution--down', metric.trend === 'down')
-      evolution.classList.toggle('metric-evolution--neutral', metric.trend === 'neutral')
-    })
-  }
+connect() {
+  this.element.addEventListener('period:change', e => {
+    this.load(e.detail.params)
+  })
 }
 ```
 
 ---
 
-# 🔴 Conditions NON négociables pour que ça marche
+# 6️⃣ Users KPI controller (raison pour laquelle ta carte reste vide)
 
-1. **DOM parent commun**
+**Bug actuel** :
 
-```html
-<div data-controller="users-kpi">
-  <form data-controller="period-picker">...</form>
-  <div class="metrics-card">...</div>
-</div>
-```
+* Le controller est bien chargé
+* MAIS **il n’écoute aucun événement**
+* Donc il ne fetch jamais
 
-2. `bubbles: true` → déjà fait
-3. `data-users-kpi-url-value="/kpi/users"` bien présent
-4. Chaque metric :
-
-```html
-<div data-users-kpi-target="metric" data-key="registeredUsers">
-```
-
----
-
-# 🧠 Résumé brutal
-
-* period-picker **parle**
-* users-kpi **écoute**
-* ils vivent **dans le même arbre DOM**
-* aucune magie
-* aucune dépendance cachée
-* architecture scalable
-
-Si après ça **rien ne se met à jour**, alors on regarde **le JSON exact** que `/kpi/users` renvoie, et on le corrige sans pitié.
-
-Très bien. Maintenant je vais être **chirurgical**, parce que là ton problème n’est **plus le JS**, c’est **l’assemblage**. Et oui, il y a **quelques fichiers à ajuster**, mais **peu**, et **tous ont une raison précise**.
-
-Je te fais la **liste exhaustive**, avec **quoi**, **pourquoi**, **ce que tu mets**, et **ce que tu ne touches plus après**.
-
----
-
-# 🧱 Vue d’ensemble (ce qu’on construit)
-
-```
-admin/index.html.twig
-└── users-kpi (Stimulus)
-    ├── period-picker (Stimulus)
-    │   ├── date from
-    │   ├── date to
-    │   └── weekday picker
-    └── metrics-card
-        └── metrics (N)
-```
-
-👉 **UN seul flux** :
-`period-picker → event → users-kpi → fetch → render`
-
----
-
-# ✅ FICHIERS À MODIFIER / CRÉER
-
-Je te les donne **dans l’ordre logique**.
-
----
-
-## 1️⃣ `admin/index.html.twig` ✅ (léger ajustement)
-
-### 🎯 Pourquoi
-
-C’est **le point d’ancrage DOM commun**.
-Si les controllers ne partagent pas un parent, **rien ne remonte**.
-
-### ✅ Ce que tu dois avoir
-
-```twig
-<div
-    data-controller="users-kpi"
-    data-users-kpi-url-value="{{ path('admin_kpi_users') }}"
->
-    {% include 'admin/_users_kpi_filter.html.twig' %}
-    {% include 'metrics/_metrics_card_users.html.twig' %}
-</div>
-```
-
-❌ **Tu enlèves** :
-
-* `data-controller="users-kpi"` ailleurs
-* toute logique JS ici
-
----
-
-## 2️⃣ `admin/_users_kpi_filter.html.twig` ✅ (obligatoire)
-
-### 🎯 Pourquoi
-
-C’est **le seul endroit** où vit le `period-picker`.
-
-### ✅ Contenu minimal viable
-
-```twig
-<form
-    data-controller="period-picker"
-    data-action="change->period-picker#onChange"
->
-    <input
-        type="date"
-        data-period-picker-target="from"
-    />
-
-    <input
-        type="date"
-        data-period-picker-target="to"
-    />
-
-    {% include 'admin/weekday_filter.html.twig' %}
-</form>
-```
-
-⚠️ Important :
-
-* **pas de fetch**
-* **pas d’URL**
-* **pas de logique métier**
-
----
-
-## 3️⃣ `admin/weekday_filter.html.twig` ⚠️ (petit ajustement)
-
-### 🎯 Pourquoi
-
-Il doit **mettre à jour `weekdaysValue`**, pas appeler un backend.
-
-### Exemple simple
-
-```twig
-<div
-    data-controller="weekday"
-    data-action="weekday:change->period-picker#onChange"
->
-    {# boutons Lu Ma Me etc #}
-</div>
-```
-
-Et dans ton `weekday_controller.js`, tu dois faire :
+### ✅ Fix :
 
 ```js
-this.dispatch('change', {
-  detail: { weekdays: this.selected.join(',') },
-  bubbles: true
-})
-```
+connect() {
+  this.element.addEventListener('period:change', e => {
+    this.load(e.detail.params)
+  })
+}
 
----
-
-## 4️⃣ `metrics/_metrics_card_users.html.twig` ✅
-
-### 🎯 Pourquoi
-
-C’est **une carte spécialisée**, mais **structure générique**.
-
-### Ce que tu as est bon 👌
-
-Je rappelle juste la version correcte :
-
-```twig
-{% embed 'metrics/_metrics_card.html.twig' with {
-    title: 'UTILISATEURS'
-} %}
-    {% block metrics %}
-        {% include 'metrics/_metric.html.twig' with {
-            label: 'Enregistrés',
-            key: 'registeredUsers',
-            icon: null
-        } %}
-
-        {% include 'metrics/_metric.html.twig' with {
-            label: 'Actifs',
-            key: 'activeUsers',
-            icon: '★'
-        } %}
-    {% endblock %}
-{% endembed %}
-```
-
----
-
-## 5️⃣ `metrics/_metrics_card.html.twig` ✅
-
-### 🎯 Pourquoi
-
-C’est **le container logique** des métriques.
-
-### Obligatoire
-
-```twig
-<div class="metrics-card">
-    <h3>{{ title }}</h3>
-
-    <div class="metrics">
-        {% block metrics %}{% endblock %}
-    </div>
-</div>
-```
-
-⚠️ Aucun `data-controller` ici.
-
----
-
-## 6️⃣ `metrics/_metric.html.twig` 🚨 CRITIQUE
-
-### 🎯 Pourquoi
-
-Si ça ne match pas le controller → **rien ne s’affiche**.
-
-### VERSION CORRECTE
-
-```twig
-<div
-    class="metric"
-    data-users-kpi-target="metric"
-    data-key="{{ key }}"
->
-    <div class="metric-header">
-        <span>{{ label }}</span>
-        {% if icon %}<span>{{ icon }}</span>{% endif %}
-    </div>
-
-    <div class="metric-value">—</div>
-
-    <div class="metric-evolution metric-evolution--neutral">
-        <span class="triangle"></span>
-        <span class="percent">—</span>
-    </div>
-</div>
-```
-
-❌ Erreur fréquente :
-
-* `data-target="users-kpi.metric"` ❌
-* `data-users-kpi-target="{{ key }}"` ❌
-
----
-
-# 🧪 Checklist DEBUG (à faire dans la console)
-
-1. Tu changes une date
-   → log `[period-picker] emit`
-
-2. Tu vois
-   → `[users-kpi] period change received`
-
-3. Tu vois
-   → `[users-kpi] fetch /kpi/users?...`
-
-4. Le JSON contient :
-
-```json
-{
-  "registeredUsers": {
-    "count": 235,
-    "trend": "up",
-    "evolutionPercent": 20.1
-  }
+async load(params) {
+  const url = `${this.urlValue}?${params}`
+  const res = await fetch(url)
+  const data = await res.json()
+  this.render(data)
 }
 ```
 
-Si un seul maillon manque → **ça ne marchera pas**.
+---
+
+## ❗ Pourquoi “plus aucun appel réseau” ?
+
+Parce que :
+
+* Le weekday parlait au chart
+* Le chart n’était plus au bon endroit
+* Le users-kpi n’écoutait RIEN
+
+➡️ Résultat : **événements dans le vide**
 
 ---
 
-# 🧠 Conclusion honnête
+## ✅ Conclusion honnête
 
-* Tu n’as **pas trop de fichiers**
-* Tu avais juste **un arbre DOM cassé**
-* L’architecture est **bonne**
-* Maintenant elle est **cohérente**
+* Ton idée est **100% faisable**
+* L’architecture est **saine**
+* Le problème n’était **pas Symfony**
+* C’était juste un **chaînage d’événements mal défini**
 
-Prochaine étape (quand tu veux) :
-👉 brancher **charts + metrics** sur **le même event**, proprement, sans spaghetti.
+Maintenant :
 
-Mais d’abord : fais marcher **CE pipeline**.
+* period picker = cerveau
+* weekday = UI stupide
+* chart / KPI = consommateurs
+
+C’est propre. Ça scale. Et cette fois, ça va marcher.
