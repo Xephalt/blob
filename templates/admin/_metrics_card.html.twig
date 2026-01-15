@@ -1,0 +1,13 @@
+<div
+    class="metrics-card"
+    data-controller="metrics-card"
+    data-metrics-card-url="{{ url }}"
+>
+    <div class="metrics-card-header">
+        <h3>{{ title }}</h3>
+    </div>
+
+    <div class="metrics-card-body">
+        {{ block('metrics') }}
+    </div>
+</div>

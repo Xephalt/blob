@@ -1,0 +1,18 @@
+{% embed 'metrics/_metrics_card.html.twig' with {
+    title: 'UTILISATEURS',
+    url: path('admin_kpi_users')
+} %}
+    {% block metrics %}
+        {% include 'metrics/_metric.html.twig' with {
+            label: 'Enregistrés',
+            key: 'registeredUsers',
+            icon: null
+        } %}
+
+        {% include 'metrics/_metric.html.twig' with {
+            label: 'Actifs',
+            key: 'activeUsers',
+            icon: '★'
+        } %}
+    {% endblock %}
+{% endembed %}

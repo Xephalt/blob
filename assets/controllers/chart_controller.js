@@ -9,24 +9,27 @@ export default class extends Controller {
   chart1 = null
   chart2 = null
 
-  async connect() {
+    async connect() {
     await this.load()
     window.addEventListener('resize', this.onResize)
-  }
 
-  disconnect() {
+    this.element.addEventListener(
+        'period:change',
+        this.onPeriodChange
+    )
+    }
+
+    disconnect() {
     window.removeEventListener('resize', this.onResize)
 
-    if (this.chart1) {
-      this.chart1.dispose()
-      this.chart1 = null
-    }
+    this.element.removeEventListener(
+        'period:change',
+        this.onPeriodChange
+    )
 
-    if (this.chart2) {
-      this.chart2.dispose()
-      this.chart2 = null
+    if (this.chart1) this.chart1.dispose()
+    if (this.chart2) this.chart2.dispose()
     }
-  }
 
   onResize = () => {
     if (this.chart1) this.chart1.resize()
@@ -186,13 +189,9 @@ export default class extends Controller {
   /* -------------------------
    * UI EVENT
    * ------------------------- */
-  onPeriodChange() {
-    const form = document.getElementById('export-usage-data')
-    if (!form) return
 
-    const formData = new FormData(form)
-    const params = new URLSearchParams(formData).toString()
-
+    onPeriodChange = (event) => {
+    const params = event.detail.toString()
     this.load(params)
-  }
+    }
 }
