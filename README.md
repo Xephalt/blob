@@ -192,3 +192,4 @@ C’est comme ça qu’on évite de “bien architecturer un truc cassé”.
 
 Quand tu verras **les chiffres bouger** avec ce filtre,
 on passera à l’étape suivante proprement.
+
