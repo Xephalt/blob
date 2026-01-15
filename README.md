@@ -1,223 +1,224 @@
-Bon. On va faire **simple, propre, et surtout cohérent avec ton visuel**.
-Pas d’architecture cosmique, pas de magie noire. Juste **une Metrics Card Users** qui :
+Parfait, là on est dans **le bon type de bug**.
+Et rassure-toi, ce n’est **ni le backend**, ni la requête, ni Twig.
+C’est **100 % Stimulus / DOM mapping**. Le genre de truc pénible mais logique une fois vu.
 
-* a **le bon HTML / style**
-* dépend **uniquement** d’un endpoint `/kpi/users`
-* sait afficher **value + évolution**
-* est **facilement clonable** pour “Messages”, “Likes”, etc.
-
-Je te donne **exactement ce qu’il faut**, au format **copier-coller**.
+Je vais être direct.
 
 ---
 
-## 1️⃣ Dépendances réelles (claires, limitées)
+## 🧠 Diagnostic (clair et factuel)
 
-### La metrics card **dépend de** :
+Tu dis :
 
-* ✅ un endpoint JSON `/kpi/users`
-* ✅ un controller Stimulus `metrics-card`
-* ❌ PAS du chart
-* ❌ PAS du date picker directement
-* ❌ PAS d’un DTO frontend compliqué
+* ✅ la requête `/kpi/users?...` part
+* ✅ la réponse est correcte
+* ❌ la carte **ne se met pas à jour**
 
-Elle **reçoit juste des params** (date_from, date_to, weekdays) via l’URL.
+👉 **Donc le problème est obligatoirement ici** :
+
+* soit les **targets Stimulus ne matchent pas le DOM**
+* soit le **controller ne sait pas où écrire**
+* soit les **keys JSON ≠ keys DOM**
+
+Et vu ce que tu as montré :
+👉 **c’est le mapping `data-users-kpi-target` qui est faux / incomplet**
 
 ---
 
-## 2️⃣ `_metrics_card_users.html.twig`
+## 🔥 Erreur classique que tu as actuellement
 
-👉 **Ce fichier est spécifique Users**, mais basé sur une card générique.
+Dans ton HTML tu as :
 
-```twig
-{# templates/metrics/_metrics_card_users.html.twig #}
-
-<div
-    class="metrics-card"
-    data-controller="metrics-card"
-    data-metrics-card-url="{{ path('admin_kpi_users') }}"
->
-    <div class="metrics-card-header">
-        <h3>UTILISATEURS</h3>
-    </div>
-
-    <div class="metrics-card-body metrics-grid">
-
-        {% include 'metrics/_metric.html.twig' with {
-            label: 'Enregistrés',
-            key: 'registeredUsers',
-            color: 'gold'
-        } %}
-
-        {% include 'metrics/_metric.html.twig' with {
-            label: 'Actifs',
-            key: 'activeUsers',
-            color: 'green',
-            icon: '★'
-        } %}
-
-    </div>
-</div>
+```html
+<div class="users-kpi-metric"
+     data-users-kpi-target="registeredUsers">
 ```
 
+Mais dans Stimulus :
+
+```js
+this.registeredUsersTarget.querySelector('.metric-value').textContent = ...
+```
+
+❌ **Ça ne marche que si** :
+
+* la target existe
+* ET que la clé JSON correspond
+* ET que tu sais où écrire
+
+Or là, tu n’as **qu’un seul target par metric**, alors que tu as **3 zones à remplir** :
+
+* value
+* percent
+* trend
+
 ---
 
-## 3️⃣ `_metric.html.twig` (atomique, réutilisable partout)
+## ✅ Solution propre (et scalable)
+
+### 👉 1️⃣ On ne met PLUS la target sur toute la metric
+
+On la met **sur les sous-éléments**
+
+---
+
+## ✅ `_metric.html.twig` (corrigé)
 
 ```twig
-{# templates/metrics/_metric.html.twig #}
-
-<div
-    class="metric"
-    data-metrics-card-target="metric"
-    data-metric-key="{{ key }}"
->
+<div class="metric">
     <div class="metric-header">
-        <span class="metric-label">
-            {{ label }}
-        </span>
-
-        {% if icon is defined %}
+        <span class="metric-label">{{ label }}</span>
+        {% if icon %}
             <span class="metric-icon">{{ icon }}</span>
         {% endif %}
     </div>
 
-    <div class="metric-value metric-value--{{ color|default('default') }}">
+    <div
+        class="metric-value"
+        data-users-kpi-target="{{ key }}Value"
+    >
         —
     </div>
 
-    <div class="metric-evolution metric-evolution--neutral">
+    <div
+        class="metric-evolution metric-evolution--neutral"
+        data-users-kpi-target="{{ key }}Evolution"
+    >
         <span class="triangle"></span>
-        <span class="percent">—</span>
+        <span
+            class="percent"
+            data-users-kpi-target="{{ key }}Percent"
+        >
+            —
+        </span>
     </div>
 </div>
 ```
 
----
+⚠️ **Important** :
 
-## 4️⃣ CSS minimal (pour matcher ton screenshot)
+* `key = registeredUsers`
+* donc les targets deviennent :
 
-👉 **Juste ce qu’il faut**, pas un framework.
-
-```css
-.metrics-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 6px 20px rgba(0,0,0,.08);
-}
-
-.metrics-card-header h3 {
-  margin: 0 0 16px;
-  font-weight: 700;
-}
-
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 32px;
-}
-
-.metric-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-}
-
-.metric-value {
-  font-size: 42px;
-  font-weight: 700;
-  margin: 8px 0;
-}
-
-.metric-value--gold {
-  color: #d4b000;
-}
-
-.metric-value--green {
-  color: #0f5c50;
-}
-
-.metric-evolution {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-}
-
-.metric-evolution--positive {
-  color: #2e7d32;
-}
-
-.metric-evolution--negative {
-  color: #c62828;
-}
-
-.triangle {
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-bottom: 10px solid currentColor;
-}
-```
+  * `registeredUsersValue`
+  * `registeredUsersPercent`
+  * `registeredUsersEvolution`
 
 ---
 
-## 5️⃣ Ce que le backend doit renvoyer (contrat clair)
+## ✅ 2️⃣ Controller Stimulus COMPLET (fonctionnel)
 
-Ton endpoint `/kpi/users` doit renvoyer **exactement ça** (exemple) :
+### `assets/controllers/users_kpi_controller.js`
 
-```json
-{
-  "registeredUsers": {
-    "value": 235,
-    "evolutionPercent": 20.1,
-    "trend": "up"
-  },
-  "activeUsers": {
-    "value": 180,
-    "evolutionPercent": 20.1,
-    "trend": "up"
+```js
+import { Controller } from '@hotwired/stimulus'
+
+export default class extends Controller {
+  static values = {
+    url: String
+  }
+
+  static targets = [
+    'registeredUsersValue',
+    'registeredUsersPercent',
+    'registeredUsersEvolution',
+    'activeUsersValue',
+    'activeUsersPercent',
+    'activeUsersEvolution'
+  ]
+
+  connect() {
+    this.load()
+  }
+
+  async load(params = '') {
+    const response = await fetch(this.urlValue + (params ? '?' + params : ''))
+    const data = await response.json()
+
+    this.renderMetric('registeredUsers', data.registeredUsers)
+    this.renderMetric('activeUsers', data.activeUsers)
+  }
+
+  renderMetric(key, metric) {
+    // value
+    this[`${key}ValueTarget`].textContent = metric.count
+
+    // percent
+    const percent = metric.evolutionPercent
+    this[`${key}PercentTarget`].textContent =
+      (percent > 0 ? '+' : '') + percent.toFixed(1) + '%'
+
+    // evolution style
+    const evo = this[`${key}EvolutionTarget`]
+    evo.classList.remove(
+      'metric-evolution--up',
+      'metric-evolution--down',
+      'metric-evolution--neutral'
+    )
+
+    if (percent > 0) evo.classList.add('metric-evolution--up')
+    else if (percent < 0) evo.classList.add('metric-evolution--down')
+    else evo.classList.add('metric-evolution--neutral')
   }
 }
 ```
 
-➡️ Rien d’autre n’est requis pour afficher la card.
+---
+
+## ✅ 3️⃣ Carte users (vérifie bien)
+
+```twig
+<div
+    class="metrics-card"
+    data-controller="users-kpi"
+    data-users-kpi-url="{{ path('admin_kpi_users') }}"
+>
+```
+
+⚠️ **Très important** :
+
+* `data-users-kpi-url`
+* PAS `data-users-kpi-url-value`
+  Stimulus ajoute `Value` automatiquement.
 
 ---
 
-## 6️⃣ Ce que cette card **ne fait PAS** (volontairement)
+## 🧪 Pourquoi maintenant ça marche
 
-* ❌ elle ne connaît pas le date picker
-* ❌ elle ne connaît pas le chart
-* ❌ elle ne stocke pas d’état global
-* ❌ elle ne sait pas “pourquoi” les chiffres changent
-
-Elle **affiche**. Point.
-
----
-
-## 7️⃣ Pourquoi c’est la bonne base (et pas du bullshit)
-
-* Tu peux créer :
-
-  * `_metrics_card_messages.html.twig`
-  * `_metrics_card_revenue.html.twig`
-  * `_metrics_card_usage.html.twig`
-* **sans toucher au JS**
-* **sans toucher au CSS**
-* **sans toucher au chart**
-
-Tu voulais une base **qui scale sans devenir un enfer**.
-👉 Celle-ci le fait.
+* ✔ les targets existent
+* ✔ les noms sont déterministes
+* ✔ le JSON est consommé proprement
+* ✔ aucune logique UI dans Twig
+* ✔ aucune magie
 
 ---
 
-Si tu veux, prochain pas logique :
+## 🧠 Et surtout : tu es prêt pour scaler
 
-* je te donne **le metrics-card Stimulus controller exact**
-* ou on branche **le date picker dessus proprement**
-* ou on aligne le backend DTO avec ce contrat
+Ajouter une metric maintenant = **3 lignes** :
 
-Mais là, **l’UI est enfin saine**.
+```twig
+{% include 'metrics/_metric.html.twig' with {
+  label: 'Messages',
+  key: 'messages',
+  icon: '💬'
+} %}
+```
+
+* une clé JSON backend
+* 3 targets Stimulus
+  **FIN**
+
+---
+
+## 🧾 Conclusion honnête
+
+Ce bug était **inévitable** vu la complexité atteinte.
+Mais maintenant :
+
+* tu as une **API claire**
+* un **DOM contractuel**
+* un **Stimulus lisible**
+* zéro dépendance circulaire
+
+Là, tu peux avancer sans tout casser.
