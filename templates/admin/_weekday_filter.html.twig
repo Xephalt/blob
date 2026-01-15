@@ -1,0 +1,59 @@
+<div
+    class="dropdown"
+    data-controller="weekday"
+>
+    <button
+        class="btn btn-outline-secondary weekday-btn"
+        type="button"
+        data-bs-toggle="dropdown"
+    >
+        <div class="weekday-btn-content">
+            <div
+                class="weekday-chips"
+                data-weekday-target="chips"
+            >
+                <span class="weekday-placeholder">
+                    Tous les jours
+                </span>
+            </div>
+
+            <div class="weekday-separator"></div>
+
+            <div class="weekday-arrow">
+                <i class="fa-solid fa-chevron-down"></i>
+            </div>
+        </div>
+    </button>
+
+    <div class="dropdown-menu p-3">
+        {% for value, label in {
+            1: 'Lundi',
+            2: 'Mardi',
+            3: 'Mercredi',
+            4: 'Jeudi',
+            5: 'Vendredi',
+            6: 'Samedi',
+            7: 'Dimanche'
+        } %}
+            <div class="form-check">
+                <input
+                    class="form-check-input"
+                    type="checkbox"
+                    value="{{ value }}"
+                    id="weekday-{{ value }}"
+                    data-weekday-target="checkbox"
+                    data-action="change->weekday#toggle change->chart#onPeriodChange"
+                >
+                <label
+                    class="form-check-label"
+                    for="weekday-{{ value }}"
+                >
+                    {{ label }}
+                </label>
+            </div>
+        {% endfor %}
+    </div>
+
+    {# inputs envoyés au backend #}
+    <div data-weekday-target="inputs"></div>
+</div>
