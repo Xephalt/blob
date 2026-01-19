@@ -1,298 +1,273 @@
-Bon. On va arrêter de bricoler dans le noir et remettre un minimum de **discipline mentale** dans tout ça, sinon tu vas continuer à courir après des events fantômes toute la nuit.
+Oui. Tu as raison. Et ce n’est pas un “petit décalage”, c’est **structurellement non-iso** avec TON code existant.
+Donc on va arrêter la théorie abstraite et **s’aligner exactement sur ce que TU AS**, pas sur ce que j’aurais aimé que tu aies.
 
-Je vais faire trois choses, dans l’ordre logique (pas l’ordre “Stimulus roulette”) :
-
-1. **Expliquer précisément pourquoi ça casse aujourd’hui**
-2. **Te donner les DEUX controllers Stimulus corrects, complets**
-3. **Lister exactement les fichiers Twig à modifier et comment les brancher**
-4. **Corriger le bug UX du date picker qui bloque la page**
-
-Aucun bullshit, que du copiable.
+Je vais être sec, précis, et utile.
 
 ---
 
-## 1️⃣ Pourquoi ça ne marche PAS aujourd’hui (la vraie raison)
+# 🔴 Diagnostic clair (sans diplomatie)
 
-### ❌ Erreur clé
+Ton existant **n’est PAS** :
 
-```
-Error invoking action "change->period-picker#onChange"
-references undefined method "onChange"
-```
+* un UseCase pur qui orchestre des Queries simples
+* un `MetricDto::fromComparison()`
+* une séparation nette Query = faits bruts / Handler = calcul
 
-👉 Ça veut dire **une seule chose** :
-**Ton controller `period-picker` n’a PAS de méthode `onChange()` exposée**, alors que ton HTML la référence.
+👉 **Ton existant est un modèle hybride assumé** :
 
-Stimulus n’invente rien.
-Si le HTML dit `period-picker#onChange`, **la méthode doit exister**.
+* La **Query calcule déjà les métriques**
+* Le **UseCase est un simple transport**
+* Le **Handler délègue intégralement à la Query**
+* Le **DTO `MetricDto` contient déjà tout** (current, previous, delta, % , trend)
 
----
+Donc oui :
+👉 ce que je t’ai proposé **n’est pas iso**, et tu as eu raison de tiquer.
 
-### ❌ Deuxième problème silencieux
-
-Tu dispatches des events… mais **personne ne les écoute correctement**.
-
-* Le chart écoute encore son propre `onPeriodChange`
-* Le KPI n’écoute rien du tout (ou écoute un event jamais dispatché)
-
-👉 Il faut **UN event métier clair** :
-
-```
-period:change
-```
-
-Et **tout le monde s’aligne dessus**.
+Maintenant on fait la seule chose raisonnable :
+**on clone exactement ce modèle pour Messages**, sans idéologie.
 
 ---
 
-## 2️⃣ Architecture SIMPLE (et saine)
+# 🧠 Modèle réel de TON Application (tel qu’il est)
 
-### Principe
+### Ce que ton code dit implicitement
 
-* **PeriodPicker = source unique de vérité**
+1. **La Query est un “Application Service” déguisé**
+2. Elle :
 
-* Il :
+   * appelle les repositories
+   * calcule les deltas
+   * calcule les pourcentages
+   * décide du Trend
+3. Le Handler est un **pass-through**
+4. Le DTO est **riche**, pas un simple container
 
-  * lit `from_date`, `to_date`, `weekdays`
-  * construit une query string
-  * dispatch **un CustomEvent**
+➡️ C’est cohérent **dans ton code**, même si ce n’est pas du CQRS académique.
 
-* Les consommateurs :
-
-  * `chart`
-  * `users-kpi`
-
-👉 **ZÉRO dépendance directe entre eux**
+Donc on respecte ça.
 
 ---
 
-## 3️⃣ Controller `period_picker_controller.js` (FINAL)
+# ✅ Ce qu’il faut faire pour Messages (ISO STRICT)
 
-📁 `assets/controllers/period_picker_controller.js`
+## 1️⃣ Copier la structure, pas la philosophie
 
-```js
-import { Controller } from '@hotwired/stimulus'
+Tu as aujourd’hui :
 
-export default class extends Controller {
-  static targets = ['from', 'to']
-  static values = {
-    eventName: { type: String, default: 'period:change' }
-  }
+```
+Admin/
+ ├─ Dto/
+ │   ├─ MetricDto
+ │   ├─ Trend
+ │   └─ UserPeriodMetricsDto
+ ├─ Query/
+ │   └─ UserMetricsQuery
+ └─ UseCase/
+     ├─ GetUserMetrics
+     └─ GetUserMetricsHandler
+```
 
-  connect() {
-    console.log('[period-picker] connected')
-  }
+👉 Pour Messages, tu fais **STRICTEMENT** :
 
-  onChange() {
-    const params = new URLSearchParams()
+```
+Admin/
+ ├─ Dto/
+ │   └─ MessagePeriodMetricsDto
+ ├─ Query/
+ │   └─ MessageMetricsQuery
+ └─ UseCase/
+     ├─ GetMessageMetrics
+     └─ GetMessageMetricsHandler
+```
 
-    if (this.hasFromTarget && this.fromTarget.value) {
-      params.set('date_from', this.fromTarget.value)
-    }
+Même découpe. Même rôle. Même odeur.
 
-    if (this.hasToTarget && this.toTarget.value) {
-      params.set('date_to', this.toTarget.value)
-    }
+---
 
-    // weekdays[] inputs générés par weekday controller
-    const weekdays = Array.from(
-      this.element.querySelectorAll('input[name="weekday[]"]')
-    ).map(i => i.value)
+## 2️⃣ MessagePeriodMetricsDto (clone du User)
 
-    if (weekdays.length > 0) {
-      params.set('weekdays', weekdays.join(','))
-    }
-
-    console.log('[period-picker] dispatch', params.toString())
-
-    this.element.dispatchEvent(
-      new CustomEvent(this.eventNameValue, {
-        bubbles: true,
-        detail: {
-          params: params.toString()
-        }
-      })
-    )
-  }
+```php
+final class MessagePeriodMetricsDto
+{
+    public function __construct(
+        public readonly MetricDto $messagesCount,
+        public readonly MetricDto $avgMessagesPerUser,
+        public readonly Period $currentPeriod,
+        public readonly Period $comparisonPeriod,
+    ) {}
 }
 ```
 
-✔ Méthode `onChange` existe
-✔ Event unique
-✔ Format backend OK
-✔ Aucun couplage
+⚠️ **Tu gardes Period dans le DTO**, parce que ton UserPeriodMetricsDto le fait déjà.
+Ce n’est pas “propre”, mais c’est **cohérent avec l’existant**.
 
 ---
 
-## 4️⃣ Weekday filter : CE QUE TU DOIS CHANGER
+## 3️⃣ MessageMetricsQuery (copie conforme de UserMetricsQuery)
 
-### ❌ À SUPPRIMER
+C’est LE point clé.
 
-Dans `_weekday_filter.html.twig` :
+### Signature
 
-```twig
-data-action="change->weekday#toggle change->chart#onPeriodChange"
+```php
+final class MessageMetricsQuery
+{
+    public function __construct(
+        private MessageRepository $messageRepository,
+        private UserRepository $userRepository,
+    ) {}
 ```
 
-👉 **Le weekday ne parle PLUS au chart**
+Oui, **UserRepository ici**, exactement comme tu utilises MessageRepository pour active users dans Users.
 
 ---
 
-### ✅ À METTRE À LA PLACE
+### Méthode execute (ISO)
 
-```twig
-data-action="change->weekday#toggle change->period-picker#onChange"
+```php
+public function execute(
+    ResolvedPeriod $period,
+    ?array $weekdays
+): MessagePeriodMetricsDto {
 ```
 
-Le weekday **informe le period picker**, point.
-
-Ton `weekday_controller.js` peut rester tel quel.
-Il fait déjà exactement ce qu’il faut (inputs hidden `weekday[]`).
+Même signature. Même contrat.
 
 ---
 
-## 5️⃣ Controller `users_kpi_controller.js` (COMPLET)
+### Calculs internes (adaptés)
 
-📁 `assets/controllers/users_kpi_controller.js`
+```php
+$currentMessages = $this->messageRepository
+    ->countMessagesBetween($period->current(), $weekdays);
 
-```js
-import { Controller } from '@hotwired/stimulus'
+$previousMessages = $this->messageRepository
+    ->countMessagesBetween($period->comparison(), $weekdays);
 
-export default class extends Controller {
-  static targets = ['value', 'percent', 'trend']
-  static values = {
-    url: String
-  }
+$currentActiveUsers = $this->messageRepository
+    ->countActiveUsersBetween($period->current(), $weekdays);
 
-  connect() {
-    console.log('[users-kpi] connected')
+$previousActiveUsers = $this->messageRepository
+    ->countActiveUsersBetween($period->comparison(), $weekdays);
+```
 
-    this.element.addEventListener('period:change', (e) => {
-      this.load(e.detail.params)
-    })
-  }
+Puis :
 
-  async load(params) {
-    const url = `${this.urlValue}?${params}`
-    console.log('[users-kpi] fetch', url)
+```php
+$currentAvg = $currentActiveUsers === 0
+    ? 0
+    : (int) round($currentMessages / $currentActiveUsers);
 
-    const response = await fetch(url)
-    const data = await response.json()
+$previousAvg = $previousActiveUsers === 0
+    ? 0
+    : (int) round($previousMessages / $previousActiveUsers);
+```
 
-    this.render(data)
-  }
+---
 
-  render(data) {
-    for (const [key, metric] of Object.entries(data.metrics)) {
-      const el = this.element.querySelector(`[data-metric="${key}"]`)
-      if (!el) continue
+### Construction du DTO (identique à User)
 
-      el.querySelector('.metric-value').textContent = metric.value
-      el.querySelector('.percent').textContent = `${metric.delta_percent}%`
+```php
+return new MessagePeriodMetricsDto(
+    $this->buildMetric($currentMessages, $previousMessages),
+    $this->buildMetric($currentAvg, $previousAvg),
+    $period->current(),
+    $period->comparison(),
+);
+```
 
-      el.classList.toggle('up', metric.delta > 0)
-      el.classList.toggle('down', metric.delta < 0)
+---
+
+### buildMetric = COPIÉ COLLÉ
+
+Tu **ne touches pas** à la logique existante :
+
+```php
+private function buildMetric(int $current, int $previous): MetricDto
+{
+    $delta = $current - $previous;
+
+    if ($previous === 0) {
+        $evolution = $current === 0 ? 0.0 : 100.0;
+    } else {
+        $evolution = ($delta / $previous) * 100;
     }
-  }
+
+    $trend = match (true) {
+        $delta > 0 => Trend::UP,
+        $delta < 0 => Trend::DOWN,
+        default => Trend::STABLE,
+    };
+
+    return new MetricDto(
+        $current,
+        $previous,
+        $delta,
+        $evolution,
+        $trend
+    );
+}
+```
+
+Oui, c’est de la duplication.
+Oui, ce sera refactorable plus tard.
+👉 **Mais aujourd’hui, c’est ISO.**
+
+---
+
+## 4️⃣ UseCase & Handler (aucune créativité)
+
+### Command
+
+```php
+final class GetMessageMetrics
+{
+    public function __construct(
+        public readonly ResolvedPeriod $period,
+        public readonly ?array $weekdays,
+    ) {}
+}
+```
+
+### Handler
+
+```php
+final class GetMessageMetricsHandler
+{
+    public function __construct(
+        private MessageMetricsQuery $query,
+    ) {}
+
+    public function handle(GetMessageMetrics $command): MessagePeriodMetricsDto
+    {
+        return $this->query->execute(
+            $command->period,
+            $command->weekdays
+        );
+    }
 }
 ```
 
 ---
 
-## 6️⃣ `_metrics_card_users.html.twig` (PROPRE)
+# 🟢 Conclusion honnête
 
-📁 `templates/admin/metrics/_metrics_card_users.html.twig`
+Tu avais raison de dire :
 
-```twig
-<div
-  class="metrics-card"
-  data-controller="users-kpi"
-  data-users-kpi-url="{{ path('admin_kpi_users') }}"
->
-  <h3>UTILISATEURS</h3>
+> “ce n’est pas iso avec l’existant”
 
-  <div class="metrics">
-    <div class="metric" data-metric="registeredUsers">
-      <span class="label">Enregistrés</span>
-      <span class="metric-value">—</span>
-      <span class="percent">—</span>
-    </div>
+✔️ Mon précédent message était **architecturalement juste**,
+❌ mais **contextuellement faux pour TON code**.
 
-    <div class="metric" data-metric="activeUsers">
-      <span class="label">Actifs</span>
-      <span class="metric-value">—</span>
-      <span class="percent">—</span>
-    </div>
-  </div>
-</div>
-```
+La bonne solution ici n’est pas la pureté, c’est **l’alignement**.
 
----
+👉 On clone **exactement** le pattern UserMetrics.
+👉 On ne refactore RIEN tant que la carte Messages n’est pas verte.
+👉 On parlera factorisation **après**, pas avant.
 
-## 7️⃣ `index.html.twig` – VERSION CORRECTE
+Si tu veux, prochaine étape :
 
-```twig
-<form
-  data-controller="period-picker"
-  data-action="change->period-picker#onChange"
->
-  <input
-    type="date"
-    name="from"
-    data-period-picker-target="from"
-  >
+* je te propose **le diff exact fichier par fichier**
+* ou on prépare **le futur refactor commun MetricBuilder** (mais pas maintenant)
 
-  <input
-    type="date"
-    name="to"
-    data-period-picker-target="to"
-  >
-
-  {% include 'admin/_weekday_filter.html.twig' %}
-</form>
-
-{% include 'admin/metrics/_metrics_card_users.html.twig' %}
-
-<div data-controller="chart"></div>
-```
-
----
-
-## 8️⃣ Bug UX : impossible de cliquer ailleurs après date picker
-
-👉 **Cause réelle** :
-Bootstrap dropdown + `<input type="date">` = focus trap
-
-### ✅ Fix SIMPLE
-
-Dans `_weekday_filter.html.twig`, sur le bouton dropdown :
-
-```html
-<button
-  type="button"
-  data-bs-auto-close="outside"
-  ...
->
-```
-
-Et **ne mets PAS le date picker dans un dropdown**.
-Jamais.
-C’est un piège connu.
-
----
-
-## 9️⃣ Résumé brutal (mais utile)
-
-* ❌ Chart qui écoute le form → MAUVAIS
-* ❌ Weekday qui parle au chart → MAUVAIS
-* ✅ Period picker = source unique
-* ✅ Event métier `period:change`
-* ✅ Chart + KPI = listeners passifs
-
----
-
-Si tu veux, prochain message :
-👉 **on branche le chart PROPREMENT sur `period:change` sans toucher son code métier**
-et on règle l’erreur ECharts “already initialized” une bonne fois pour toutes.
-
-Respire. Là, on est enfin sur quelque chose de solide.
+Tu choisis.
