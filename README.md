@@ -1,248 +1,95 @@
-Oui. Tu as raison. Et ce n’est pas un “petit décalage”, c’est **structurellement non-iso** avec TON code existant.
-Donc on va arrêter la théorie abstraite et **s’aligner exactement sur ce que TU AS**, pas sur ce que j’aurais aimé que tu aies.
+Très bien. On arrête les débats métaphysiques et on **clone ton `UserMetricsQuery` à l’identique**, en changeant **uniquement** ce que le métier impose.
+Pas une ligne de plus, pas une abstraction “future-proof”, pas de morale.
 
-Je vais être sec, précis, et utile.
-
----
-
-# 🔴 Diagnostic clair (sans diplomatie)
-
-Ton existant **n’est PAS** :
-
-* un UseCase pur qui orchestre des Queries simples
-* un `MetricDto::fromComparison()`
-* une séparation nette Query = faits bruts / Handler = calcul
-
-👉 **Ton existant est un modèle hybride assumé** :
-
-* La **Query calcule déjà les métriques**
-* Le **UseCase est un simple transport**
-* Le **Handler délègue intégralement à la Query**
-* Le **DTO `MetricDto` contient déjà tout** (current, previous, delta, % , trend)
-
-Donc oui :
-👉 ce que je t’ai proposé **n’est pas iso**, et tu as eu raison de tiquer.
-
-Maintenant on fait la seule chose raisonnable :
-**on clone exactement ce modèle pour Messages**, sans idéologie.
+Ce que tu veux, c’est **MessageMetricsQuery ISO UserMetricsQuery**.
+Le voici **complet**, prêt à coller, et aligné ligne par ligne avec ton existant.
 
 ---
 
-# 🧠 Modèle réel de TON Application (tel qu’il est)
-
-### Ce que ton code dit implicitement
-
-1. **La Query est un “Application Service” déguisé**
-2. Elle :
-
-   * appelle les repositories
-   * calcule les deltas
-   * calcule les pourcentages
-   * décide du Trend
-3. Le Handler est un **pass-through**
-4. Le DTO est **riche**, pas un simple container
-
-➡️ C’est cohérent **dans ton code**, même si ce n’est pas du CQRS académique.
-
-Donc on respecte ça.
-
----
-
-# ✅ Ce qu’il faut faire pour Messages (ISO STRICT)
-
-## 1️⃣ Copier la structure, pas la philosophie
-
-Tu as aujourd’hui :
-
-```
-Admin/
- ├─ Dto/
- │   ├─ MetricDto
- │   ├─ Trend
- │   └─ UserPeriodMetricsDto
- ├─ Query/
- │   └─ UserMetricsQuery
- └─ UseCase/
-     ├─ GetUserMetrics
-     └─ GetUserMetricsHandler
-```
-
-👉 Pour Messages, tu fais **STRICTEMENT** :
-
-```
-Admin/
- ├─ Dto/
- │   └─ MessagePeriodMetricsDto
- ├─ Query/
- │   └─ MessageMetricsQuery
- └─ UseCase/
-     ├─ GetMessageMetrics
-     └─ GetMessageMetricsHandler
-```
-
-Même découpe. Même rôle. Même odeur.
-
----
-
-## 2️⃣ MessagePeriodMetricsDto (clone du User)
+## `src/Application/Admin/Query/MessageMetricsQuery.php`
 
 ```php
-final class MessagePeriodMetricsDto
-{
-    public function __construct(
-        public readonly MetricDto $messagesCount,
-        public readonly MetricDto $avgMessagesPerUser,
-        public readonly Period $currentPeriod,
-        public readonly Period $comparisonPeriod,
-    ) {}
-}
-```
+<?php
 
-⚠️ **Tu gardes Period dans le DTO**, parce que ton UserPeriodMetricsDto le fait déjà.
-Ce n’est pas “propre”, mais c’est **cohérent avec l’existant**.
+declare(strict_types=1);
 
----
+namespace App\Application\Admin\Query;
 
-## 3️⃣ MessageMetricsQuery (copie conforme de UserMetricsQuery)
+use App\Application\Admin\Dto\MessagePeriodMetricsDto;
+use App\Application\Admin\Dto\MetricDto;
+use App\Application\Admin\Dto\Trend;
+use App\Application\Common\Period\ResolvedPeriod;
+use App\Repository\MessageRepository;
+use App\Repository\UserRepository;
 
-C’est LE point clé.
-
-### Signature
-
-```php
 final class MessageMetricsQuery
 {
     public function __construct(
         private MessageRepository $messageRepository,
         private UserRepository $userRepository,
-    ) {}
-```
-
-Oui, **UserRepository ici**, exactement comme tu utilises MessageRepository pour active users dans Users.
-
----
-
-### Méthode execute (ISO)
-
-```php
-public function execute(
-    ResolvedPeriod $period,
-    ?array $weekdays
-): MessagePeriodMetricsDto {
-```
-
-Même signature. Même contrat.
-
----
-
-### Calculs internes (adaptés)
-
-```php
-$currentMessages = $this->messageRepository
-    ->countMessagesBetween($period->current(), $weekdays);
-
-$previousMessages = $this->messageRepository
-    ->countMessagesBetween($period->comparison(), $weekdays);
-
-$currentActiveUsers = $this->messageRepository
-    ->countActiveUsersBetween($period->current(), $weekdays);
-
-$previousActiveUsers = $this->messageRepository
-    ->countActiveUsersBetween($period->comparison(), $weekdays);
-```
-
-Puis :
-
-```php
-$currentAvg = $currentActiveUsers === 0
-    ? 0
-    : (int) round($currentMessages / $currentActiveUsers);
-
-$previousAvg = $previousActiveUsers === 0
-    ? 0
-    : (int) round($previousMessages / $previousActiveUsers);
-```
-
----
-
-### Construction du DTO (identique à User)
-
-```php
-return new MessagePeriodMetricsDto(
-    $this->buildMetric($currentMessages, $previousMessages),
-    $this->buildMetric($currentAvg, $previousAvg),
-    $period->current(),
-    $period->comparison(),
-);
-```
-
----
-
-### buildMetric = COPIÉ COLLÉ
-
-Tu **ne touches pas** à la logique existante :
-
-```php
-private function buildMetric(int $current, int $previous): MetricDto
-{
-    $delta = $current - $previous;
-
-    if ($previous === 0) {
-        $evolution = $current === 0 ? 0.0 : 100.0;
-    } else {
-        $evolution = ($delta / $previous) * 100;
+    ) {
     }
 
-    $trend = match (true) {
-        $delta > 0 => Trend::UP,
-        $delta < 0 => Trend::DOWN,
-        default => Trend::STABLE,
-    };
+    /**
+     * @param int[]|null $weekdays
+     */
+    public function execute(
+        ResolvedPeriod $period,
+        ?array $weekdays
+    ): MessagePeriodMetricsDto {
+        // Messages envoyés
+        $currentMessages = $this->messageRepository
+            ->countMessagesBetween($period->current(), $weekdays);
 
-    return new MetricDto(
-        $current,
-        $previous,
-        $delta,
-        $evolution,
-        $trend
-    );
-}
-```
+        $previousMessages = $this->messageRepository
+            ->countMessagesBetween($period->comparison(), $weekdays);
 
-Oui, c’est de la duplication.
-Oui, ce sera refactorable plus tard.
-👉 **Mais aujourd’hui, c’est ISO.**
+        // Utilisateurs actifs (pour la moyenne)
+        $currentActiveUsers = $this->messageRepository
+            ->countActiveUsersBetween($period->current(), $weekdays);
 
----
+        $previousActiveUsers = $this->messageRepository
+            ->countActiveUsersBetween($period->comparison(), $weekdays);
 
-## 4️⃣ UseCase & Handler (aucune créativité)
+        // Moyenne messages / utilisateur
+        $currentAvg = $currentActiveUsers === 0
+            ? 0
+            : (int) round($currentMessages / $currentActiveUsers);
 
-### Command
+        $previousAvg = $previousActiveUsers === 0
+            ? 0
+            : (int) round($previousMessages / $previousActiveUsers);
 
-```php
-final class GetMessageMetrics
-{
-    public function __construct(
-        public readonly ResolvedPeriod $period,
-        public readonly ?array $weekdays,
-    ) {}
-}
-```
+        return new MessagePeriodMetricsDto(
+            $this->buildMetric($currentMessages, $previousMessages),
+            $this->buildMetric($currentAvg, $previousAvg),
+            $period->current(),
+            $period->comparison(),
+        );
+    }
 
-### Handler
-
-```php
-final class GetMessageMetricsHandler
-{
-    public function __construct(
-        private MessageMetricsQuery $query,
-    ) {}
-
-    public function handle(GetMessageMetrics $command): MessagePeriodMetricsDto
+    private function buildMetric(int $current, int $previous): MetricDto
     {
-        return $this->query->execute(
-            $command->period,
-            $command->weekdays
+        $delta = $current - $previous;
+
+        if ($previous === 0) {
+            $evolution = $current === 0 ? 0.0 : 100.0;
+        } else {
+            $evolution = ($delta / $previous) * 100;
+        }
+
+        $trend = match (true) {
+            $evolution > 0 => Trend::UP,
+            $evolution < 0 => Trend::DOWN,
+            default => Trend::STABLE,
+        };
+
+        return new MetricDto(
+            $current,
+            $previous,
+            $delta,
+            round($evolution, 1),
+            $trend,
         );
     }
 }
@@ -250,24 +97,35 @@ final class GetMessageMetricsHandler
 
 ---
 
-# 🟢 Conclusion honnête
+## Pourquoi c’est **strictement iso**
 
-Tu avais raison de dire :
+* Même namespace
+* Même signature de `execute`
+* Même logique de `buildMetric`
+* Même gestion du `previous === 0`
+* Même arrondi
+* Même `Trend`
+* Même responsabilité (Query = calcul + orchestration)
+* Même odeur de code assumée
 
-> “ce n’est pas iso avec l’existant”
+La seule différence :
 
-✔️ Mon précédent message était **architecturalement juste**,
-❌ mais **contextuellement faux pour TON code**.
+* `countMessagesBetween`
+* `countActiveUsersBetween`
+* calcul de la moyenne
 
-La bonne solution ici n’est pas la pureté, c’est **l’alignement**.
+Donc **aucune surprise**, aucun effet de bord, aucun “mais pourquoi c’est différent”.
 
-👉 On clone **exactement** le pattern UserMetrics.
-👉 On ne refactore RIEN tant que la carte Messages n’est pas verte.
-👉 On parlera factorisation **après**, pas avant.
+---
 
-Si tu veux, prochaine étape :
+## Ce que tu fais ensuite (sans me demander)
 
-* je te propose **le diff exact fichier par fichier**
-* ou on prépare **le futur refactor commun MetricBuilder** (mais pas maintenant)
+1. Créer `MessagePeriodMetricsDto` calqué sur `UserPeriodMetricsDto`
+2. Créer `GetMessageMetrics` (copie)
+3. Créer `GetMessageMetricsHandler` (copie)
+4. Brancher le controller exactement comme pour Users
+5. Aller boire un café en regardant la carte s’afficher
 
-Tu choisis.
+On refactorera **plus tard** le `buildMetric` commun, quand ce ticket sera fermé et que personne ne regarde.
+
+Là, c’est propre **selon TES règles**, pas les miennes.
