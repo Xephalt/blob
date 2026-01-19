@@ -1,131 +1,89 @@
-Très bien. On arrête les débats métaphysiques et on **clone ton `UserMetricsQuery` à l’identique**, en changeant **uniquement** ce que le métier impose.
-Pas une ligne de plus, pas une abstraction “future-proof”, pas de morale.
-
-Ce que tu veux, c’est **MessageMetricsQuery ISO UserMetricsQuery**.
-Le voici **complet**, prêt à coller, et aligné ligne par ligne avec ton existant.
-
----
-
-## `src/Application/Admin/Query/MessageMetricsQuery.php`
-
-```php
 <?php
 
 declare(strict_types=1);
 
-namespace App\Application\Admin\Query;
+namespace App\Controller\Admin;
 
-use App\Application\Admin\Dto\MessagePeriodMetricsDto;
-use App\Application\Admin\Dto\MetricDto;
-use App\Application\Admin\Dto\Trend;
-use App\Application\Common\Period\ResolvedPeriod;
-use App\Repository\MessageRepository;
-use App\Repository\UserRepository;
+use App\Application\Admin\UseCase\GetUserMetrics;
+use App\Application\Admin\UseCase\GetUserMetricsHandler;
+use App\Application\Admin\UseCase\GetMessageMetrics;
+use App\Application\Admin\UseCase\GetMessageMetricsHandler;
+use App\Application\Common\Period\PeriodResolver;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
-final class MessageMetricsQuery
+#[IsGranted('ROLE_ADMIN')]
+#[Route('/admin', name: 'admin_')]
+final class KpiController extends AbstractController
 {
     public function __construct(
-        private MessageRepository $messageRepository,
-        private UserRepository $userRepository,
+        private readonly PeriodResolver $periodResolver,
+        private readonly GetUserMetricsHandler $userHandler,
+        private readonly GetMessageMetricsHandler $messageHandler,
     ) {
     }
 
-    /**
-     * @param int[]|null $weekdays
-     */
-    public function execute(
-        ResolvedPeriod $period,
-        ?array $weekdays
-    ): MessagePeriodMetricsDto {
-        // Messages envoyés
-        $currentMessages = $this->messageRepository
-            ->countMessagesBetween($period->current(), $weekdays);
+    #[Route('/kpi/users', name: 'kpi_users', methods: ['GET'])]
+    public function users(Request $request): JsonResponse
+    {
+        $resolvedPeriod = $this->resolvePeriod($request);
+        $weekdays = $this->resolveWeekdays($request);
 
-        $previousMessages = $this->messageRepository
-            ->countMessagesBetween($period->comparison(), $weekdays);
-
-        // Utilisateurs actifs (pour la moyenne)
-        $currentActiveUsers = $this->messageRepository
-            ->countActiveUsersBetween($period->current(), $weekdays);
-
-        $previousActiveUsers = $this->messageRepository
-            ->countActiveUsersBetween($period->comparison(), $weekdays);
-
-        // Moyenne messages / utilisateur
-        $currentAvg = $currentActiveUsers === 0
-            ? 0
-            : (int) round($currentMessages / $currentActiveUsers);
-
-        $previousAvg = $previousActiveUsers === 0
-            ? 0
-            : (int) round($previousMessages / $previousActiveUsers);
-
-        return new MessagePeriodMetricsDto(
-            $this->buildMetric($currentMessages, $previousMessages),
-            $this->buildMetric($currentAvg, $previousAvg),
-            $period->current(),
-            $period->comparison(),
+        $result = $this->userHandler->handle(
+            new GetUserMetrics($resolvedPeriod, $weekdays)
         );
+
+        return $this->json($result);
     }
 
-    private function buildMetric(int $current, int $previous): MetricDto
+    #[Route('/kpi/messages', name: 'kpi_messages', methods: ['GET'])]
+    public function messages(Request $request): JsonResponse
     {
-        $delta = $current - $previous;
+        $resolvedPeriod = $this->resolvePeriod($request);
+        $weekdays = $this->resolveWeekdays($request);
 
-        if ($previous === 0) {
-            $evolution = $current === 0 ? 0.0 : 100.0;
-        } else {
-            $evolution = ($delta / $previous) * 100;
+        $result = $this->messageHandler->handle(
+            new GetMessageMetrics($resolvedPeriod, $weekdays)
+        );
+
+        return $this->json($result);
+    }
+
+    /**
+     * Résolution centralisée de la période (ISO users/messages)
+     */
+    private function resolvePeriod(Request $request)
+    {
+        $dateFrom = $request->query->get('date_from');
+        $dateTo = $request->query->get('date_to');
+
+        return $this->periodResolver->resolve($dateFrom, $dateTo);
+    }
+
+    /**
+     * Normalisation du paramètre weekdays.
+     *
+     * Exemples acceptés :
+     *  - null
+     *  - "1,3,5"
+     *
+     * @return int[]|null
+     */
+    private function resolveWeekdays(Request $request): ?array
+    {
+        $weekdaysRaw = $request->query->get('weekdays');
+
+        if ($weekdaysRaw === null || $weekdaysRaw === '') {
+            return null;
         }
 
-        $trend = match (true) {
-            $evolution > 0 => Trend::UP,
-            $evolution < 0 => Trend::DOWN,
-            default => Trend::STABLE,
-        };
-
-        return new MetricDto(
-            $current,
-            $previous,
-            $delta,
-            round($evolution, 1),
-            $trend,
+        $weekdays = array_filter(
+            array_map('intval', explode(',', (string) $weekdaysRaw))
         );
+
+        return $weekdays !== [] ? $weekdays : null;
     }
 }
-```
-
----
-
-## Pourquoi c’est **strictement iso**
-
-* Même namespace
-* Même signature de `execute`
-* Même logique de `buildMetric`
-* Même gestion du `previous === 0`
-* Même arrondi
-* Même `Trend`
-* Même responsabilité (Query = calcul + orchestration)
-* Même odeur de code assumée
-
-La seule différence :
-
-* `countMessagesBetween`
-* `countActiveUsersBetween`
-* calcul de la moyenne
-
-Donc **aucune surprise**, aucun effet de bord, aucun “mais pourquoi c’est différent”.
-
----
-
-## Ce que tu fais ensuite (sans me demander)
-
-1. Créer `MessagePeriodMetricsDto` calqué sur `UserPeriodMetricsDto`
-2. Créer `GetMessageMetrics` (copie)
-3. Créer `GetMessageMetricsHandler` (copie)
-4. Brancher le controller exactement comme pour Users
-5. Aller boire un café en regardant la carte s’afficher
-
-On refactorera **plus tard** le `buildMetric` commun, quand ce ticket sera fermé et que personne ne regarde.
-
-Là, c’est propre **selon TES règles**, pas les miennes.
