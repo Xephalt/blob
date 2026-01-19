@@ -1,169 +1,286 @@
-Parfait. Merci pour le Twig, là on parle concret.
-Et bonne nouvelle : **ton Twig Users est propre**. Vraiment. Donc l’adaptation Messages est **bête et disciplinée**, pas une refonte.
-
-Je vais faire trois choses :
-
-1. Te dire **ce qui ne change pas**
-2. Te dire **ce qui change exactement**
-3. Te donner **le fichier Twig Messages complet**, prêt à coller
-
-Sans abstraction “intelligente”, sans macro Twig prématurée, sans templating ésotérique.
+Très bonne question. Et non, ce n’est pas un “raccourci de flemme”. C’est **un choix de conception délibéré**. Je vais t’expliquer **pourquoi**, puis je te donne **le code exact à copier-coller**, sans t’envoyer refaire la cathédrale Notre-Dame en CQRS.
 
 ---
 
-## 1️⃣ Ce qui NE change PAS
+## 🎯 Le vrai sujet derrière ta question
 
-* La structure HTML globale
-* Le layout en `grid grid-cols-2`
-* La logique “une valeur + un pourcentage”
-* Les classes Tailwind
-* Le fait que **Stimulus pilote tout**
+Tu demandes en gros :
 
-👉 On reste **ISO Users**, c’est voulu.
+> Est-ce que calculer
+> `avg = messages / utilisateurs actifs`
+> **dans la Query** à partir de deux compteurs existants
+> est mieux ou pire que
+> **une requête SQL dédiée** `AVG(messages_per_user)` ?
+
+Spoiler : **dans TON contexte, la première option est objectivement meilleure**.
 
 ---
 
-## 2️⃣ Ce qui change (et seulement ça)
+## 1️⃣ Pourquoi je NE crée PAS `countAverageMessagesPerUserBetween()`
 
-### A. Le controller Stimulus
+### ❌ Option “requête dédiée” (celle que tu proposes)
 
-```diff
-- data-controller="users-kpi"
-+ data-controller="messages-kpi"
+```sql
+SELECT AVG(message_count)
+FROM (
+  SELECT COUNT(*) AS message_count
+  FROM message m
+  GROUP BY user_id
+) t
 ```
 
-### B. Le namespace des targets
+Ça a l’air “propre” sur le papier. En réalité :
 
-```diff
-- data-users-kpi-target="..."
-+ data-messages-kpi-target="..."
+### Problèmes réels
+
+#### 1. **Responsabilité floue**
+
+Le repository ferait :
+
+* du comptage
+* de l’agrégation
+* de la logique métier implicite (qu’est-ce qu’un “utilisateur actif” ?)
+
+👉 Le repo devient **opinionated**.
+
+---
+
+#### 2. **Couplage sémantique caché**
+
+Ta moyenne dépend implicitement de :
+
+* la définition de “utilisateur actif”
+* la période
+* les weekdays
+* les jointures
+
+Si demain tu changes **la définition d’un utilisateur actif** :
+
+* la méthode “average” devient fausse
+* sans que rien ne te le dise
+
+C’est du couplage **silencieux**. Le pire.
+
+---
+
+#### 3. **Refactor futur plus dur**
+
+Si plus tard tu veux :
+
+* afficher le nombre d’utilisateurs actifs **et** la moyenne
+* changer la formule
+* exclure certains users
+
+👉 Tu devras :
+
+* soit refaire une deuxième requête
+* soit dédoubler la logique SQL
+
+Donc **moins réutilisable**, pas plus.
+
+---
+
+## 2️⃣ Pourquoi la solution “2 compteurs + division” est la bonne ici
+
+### ✅ Ce que fait le repository (et UNIQUEMENT ça)
+
+Le repository répond à des questions **factuelles** :
+
+* “Combien de messages ?”
+* “Combien d’utilisateurs distincts ont envoyé au moins un message ?”
+
+👉 **Aucune interprétation. Juste des chiffres.**
+
+---
+
+### ✅ Ce que fait la Query (c’est son rôle)
+
+La Query :
+
+* orchestre
+* combine
+* dérive des métriques
+* applique des règles simples (division, delta, %)
+
+👉 **C’est exactement sa responsabilité.**
+
+---
+
+### 🧠 En clair
+
+| Approche               | Lisibilité | Réutilisable | Refactor-safe |
+| ---------------------- | ---------- | ------------ | ------------- |
+| 2 compteurs + division | ✅ Très     | ✅ Oui        | ✅ Oui         |
+| Requête “AVG magique”  | ❌ Moyenne  | ❌ Non        | ❌ Fragile     |
+
+Donc non, ce n’est pas “coupler pour rien”.
+C’est **découpler intelligemment**.
+
+---
+
+## 3️⃣ Et côté perf alors ?
+
+Tu pourrais penser :
+
+> “Une requête SQL = plus rapide que deux”
+
+Dans 99 % des dashboards :
+
+* les deux requêtes sont indexées
+* les volumes sont raisonnables
+* le coût est négligeable
+
+Mais surtout :
+👉 **la lisibilité et la maintenabilité priment largement ici**.
+
+Si un jour c’est critique :
+
+* tu optimises
+* tu ajoutes une vue SQL
+* ou un cache
+
+Pas aujourd’hui. Pas maintenant.
+
+---
+
+## 4️⃣ Code final à copier-coller (propre et ISO)
+
+---
+
+### 📁 `MessageRepository.php`
+
+#### A. Compter les messages
+
+```php
+public function countMessagesBetween(
+    Period $period,
+    ?array $weekdays
+): int {
+    $sql = <<<SQL
+        SELECT COUNT(m.id)
+        FROM message m
+        WHERE m.created_at BETWEEN :from AND :to
+    SQL;
+
+    if ($weekdays !== null) {
+        $sql .= ' AND DAYOFWEEK(m.created_at) IN (:weekdays)';
+    }
+
+    $params = [
+        'from' => $period->from()->format('Y-m-d H:i:s'),
+        'to'   => $period->to()->format('Y-m-d H:i:s'),
+    ];
+
+    if ($weekdays !== null) {
+        $params['weekdays'] = array_map(
+            static fn (int $d): int => $d === 7 ? 1 : $d + 1,
+            $weekdays
+        );
+    }
+
+    $conn = $this->getEntityManager()->getConnection();
+
+    return (int) $conn->executeQuery(
+        $sql,
+        $params,
+        $weekdays !== null
+            ? ['weekdays' => \Doctrine\DBAL\ArrayParameterType::INTEGER]
+            : []
+    )->fetchOne();
+}
 ```
 
-### C. Le contenu métier affiché
+#### B. Utilisateurs actifs
 
-* “Enregistrés” → **Messages envoyés**
-* “Actifs” → **Messages / utilisateur (moy.)**
-
-C’est tout. Le reste, tu ne touches pas.
+👉 **Tu l’as déjà. On ne touche pas.**
 
 ---
 
-## 3️⃣ Twig Messages — VERSION COMPLÈTE
+### 📁 `MessageMetricsQuery.php`
 
-👉 Fichier suggéré :
+#### Helpers
 
-```
-templates/admin/messages_kpi_card.html.twig
-```
+```php
+private function average(int $numerator, int $denominator): float
+{
+    if ($denominator === 0) {
+        return 0.0;
+    }
 
-```twig
-{# templates/admin/messages_kpi_card.html.twig #}
-{% extends 'base.html.twig' %}
+    return $numerator / $denominator;
+}
 
-{% block body %}
-<div class="container mx-auto p-4" data-controller="messages-kpi">
-    <h2 class="text-2xl font-bold">Messages</h2>
+private function buildFloatMetric(float $current, float $previous): MetricDto
+{
+    $delta = $current - $previous;
 
-    <div
-        class="bg-white shadow rounded-lg p-6"
-        data-messages-kpi-target="card"
-    >
-        <div class="grid grid-cols-2 gap-4 text-center">
+    if ($previous == 0.0) {
+        $evolution = $current == 0.0 ? 0.0 : 100.0;
+    } else {
+        $evolution = ($delta / $previous) * 100.0;
+    }
 
-            {# Messages envoyés #}
-            <div>
-                <h3 class="text-lg font-semibold mb-2">
-                    Messages envoyés
-                </h3>
+    $trend = match (true) {
+        $evolution > 0 => Trend::UP,
+        $evolution < 0 => Trend::DOWN,
+        default => Trend::STABLE,
+    };
 
-                <p
-                    class="text-4xl font-bold bnpp-color-green"
-                    data-messages-kpi-target="messageCount"
-                >
-                    –
-                </p>
-
-                <p
-                    class="text-sm font-bold"
-                    data-messages-kpi-target="messagePercent"
-                >
-                    –
-                </p>
-            </div>
-
-            {# Messages / utilisateur #}
-            <div>
-                <h3 class="text-lg font-semibold mb-2">
-                    Messages / utilisateur
-                </h3>
-
-                <p
-                    class="text-4xl font-bold bnpp-color-green"
-                    data-messages-kpi-target="messageAvg"
-                >
-                    –
-                </p>
-
-                <p
-                    class="text-sm font-bold"
-                    data-messages-kpi-target="messageAvgPercent"
-                >
-                    –
-                </p>
-            </div>
-
-        </div>
-    </div>
-</div>
-{% endblock %}
+    return new MetricDto(
+        (int) round($current),
+        (int) round($previous),
+        (int) round($delta),
+        round($evolution, 1),
+        $trend
+    );
+}
 ```
 
 ---
 
-## 4️⃣ Pourquoi c’est la BONNE adaptation (et pas une rustine)
+#### Dans `execute(...)`
 
-* ✅ **Aucun JS conditionnel**
-* ✅ **Aucun if Twig**
-* ✅ **Aucun couplage Users/Messages**
-* ✅ **Même expérience UX**
-* ✅ **Même event global**
-* ✅ **Même logique mentale**
+```php
+$currentMessages = $this->messageRepository
+    ->countMessagesBetween($period->current(), $weekdays);
 
-Chaque carte :
+$previousMessages = $this->messageRepository
+    ->countMessagesBetween($period->comparison(), $weekdays);
 
-* écoute le filtre
-* fetch sa route
-* sait mapper SON JSON
+$currentActiveUsers = $this->messageRepository
+    ->countActiveUsersBetween($period->current(), $weekdays);
 
-C’est propre. Et surtout, **ça vieillit bien**.
+$previousActiveUsers = $this->messageRepository
+    ->countActiveUsersBetween($period->comparison(), $weekdays);
 
----
+$currentAvg = $this->average($currentMessages, $currentActiveUsers);
+$previousAvg = $this->average($previousMessages, $previousActiveUsers);
 
-## 5️⃣ Ce que tu n’as toujours PAS à faire (je le répète)
-
-❌ Créer un macro Twig
-❌ Factoriser Users/Messages dans un seul template
-❌ Ajouter des `if` sur le type de KPI
-❌ Toucher au filtre
-❌ Toucher au controller Symfony
-
----
-
-## 6️⃣ Checklist finale (rapide)
-
-* [x] Backend `/admin/kpi/messages`
-* [x] `messages_kpi_controller.js`
-* [x] Enregistré dans `controllers.json`
-* [x] Twig Messages branché
-* [ ] Tester un changement de période
-* [ ] Tester weekdays
-* [ ] Vérifier JSON mapping
+return new MessagePeriodMetricsDto(
+    $this->buildMetric($currentMessages, $previousMessages),
+    $this->buildFloatMetric($currentAvg, $previousAvg),
+    $period->current(),
+    $period->comparison()
+);
+```
 
 ---
 
-Franchement :
-ce que tu fais là, ce n’est pas “rajouter une carte”.
-C’est **poser un pattern scalable sans se tirer une balle dans le pied**.
+## 🧠 Conclusion honnête
 
-Quand tu veux, prochaine étape :
-👉 vérifier ensemble que le JSON Messages colle parfaitement au JS (et ajuster **une seule ligne si besoin**).
+* Tu **aurais pu** faire une requête SQL dédiée
+* Mais tu aurais :
+
+  * perdu en lisibilité
+  * couplé des règles métier
+  * compliqué les refactors futurs
+
+Là :
+
+* chaque méthode a **un sens clair**
+* chaque chiffre est **réutilisable**
+* la moyenne est **une dérivation explicite**
+
+C’est du **CQRS pragmatique**, pas académique, pas paresseux.
+
+Et franchement, ton instinct était bon de poser la question. C’est exactement ce genre de décision qui distingue “ça marche” de “ça tient dans le temps”.
