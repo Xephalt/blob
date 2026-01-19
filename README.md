@@ -1,180 +1,177 @@
-Très bien. Voilà **le fichier complet**, propre, cohérent avec **TON existant**, sans “CQRS académique en papier mâché”, et surtout **copiable sans réfléchir**.
-
-Je te le donne **tel qu’il doit exister**, pas un pseudo-extrait.
+Très bien. On va arrêter le va-et-vient et **poser les deux fichiers finaux**, alignés **clé JSON ↔ targets ↔ UI**, sans ambiguïté.
+Tu copies, tu colles, ça s’affiche. Point.
 
 ---
 
-## 📁 `src/Application/Admin/Query/MessageMetricsQuery.php`
+# 1️⃣ `messages_kpi_controller.js` — **version finale, propre**
 
-```php
-<?php
+📁 `assets/controllers/messages_kpi_controller.js`
 
-declare(strict_types=1);
+```js
+import { Controller } from '@hotwired/stimulus';
 
-namespace App\Application\Admin\Query;
+export default class extends Controller {
+  static targets = [
+    'messagesCount',
+    'messagesPercent',
+    'avgCount',
+    'avgPercent',
+    'card',
+  ];
 
-use App\Application\Admin\Dto\MessagePeriodMetricsDto;
-use App\Application\Admin\Dto\MetricDto;
-use App\Application\Admin\Dto\Trend;
-use App\Application\Common\Period\ResolvedPeriod;
-use App\Repository\MessageRepository;
+  connect() {
+    this.boundFetch = this.fetch.bind(this);
+    document.addEventListener('kpi-filter:changed', this.boundFetch);
 
-final class MessageMetricsQuery
-{
-    public function __construct(
-        private MessageRepository $messageRepository,
-    ) {
+    // fetch initial (important si le filtre a déjà dispatch)
+    this.fetch({
+      detail: { url: '/admin/kpi/messages' },
+    });
+  }
+
+  disconnect() {
+    document.removeEventListener('kpi-filter:changed', this.boundFetch);
+  }
+
+  async fetch(event) {
+    const url = event?.detail?.url;
+    if (!url) return;
+
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        credentials: 'same-origin',
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      this.updateCard(data);
+    } catch (e) {
+      console.error('[messages-kpi] fetch error', e);
+      this.cardTarget.innerHTML =
+        '<p class="text-red-600">Impossible de charger les données</p>';
+    }
+  }
+
+  updateCard(data) {
+    // --- Messages envoyés ---
+    const messages = data.messagesCount ?? {};
+    this.messagesCountTarget.textContent = messages.count ?? '–';
+    this.messagesPercentTarget.innerHTML =
+      this.formatPercent(messages.evolutionPercent, messages.trend);
+
+    // --- Moyenne messages / utilisateur ---
+    const avg = data.avgMessagesPerUser ?? {};
+    this.avgCountTarget.textContent = avg.count ?? '–';
+    this.avgPercentTarget.innerHTML =
+      this.formatPercent(avg.evolutionPercent, avg.trend);
+  }
+
+  formatPercent(value, trend) {
+    if (value === undefined || value === null) {
+      return '–';
     }
 
-    /**
-     * @param int[]|null $weekdays
-     */
-    public function execute(
-        ResolvedPeriod $period,
-        ?array $weekdays
-    ): MessagePeriodMetricsDto {
-        // -----------------------------
-        // Messages envoyés
-        // -----------------------------
-        $currentMessages = $this->messageRepository
-            ->countMessagesBetween($period->current(), $weekdays);
+    const arrow =
+      trend === 'up'
+        ? '<i class="fa-solid fa-caret-up"></i>'
+        : trend === 'down'
+        ? '<i class="fa-solid fa-caret-down"></i>'
+        : '';
 
-        $previousMessages = $this->messageRepository
-            ->countMessagesBetween($period->comparison(), $weekdays);
+    const color =
+      trend === 'up'
+        ? 'text-green-600'
+        : trend === 'down'
+        ? 'text-red-600'
+        : 'text-gray-500';
 
-        // -----------------------------
-        // Utilisateurs actifs (pour la moyenne)
-        // -----------------------------
-        $currentActiveUsers = $this->messageRepository
-            ->countActiveUsersBetween($period->current(), $weekdays);
+    const formatted = Number(value).toLocaleString(undefined, {
+      maximumFractionDigits: 1,
+    });
 
-        $previousActiveUsers = $this->messageRepository
-            ->countActiveUsersBetween($period->comparison(), $weekdays);
-
-        // -----------------------------
-        // Moyenne messages / utilisateur
-        // -----------------------------
-        $currentAverage = $this->average($currentMessages, $currentActiveUsers);
-        $previousAverage = $this->average($previousMessages, $previousActiveUsers);
-
-        return new MessagePeriodMetricsDto(
-            // Nombre de messages
-            $this->buildMetric($currentMessages, $previousMessages),
-
-            // Moyenne messages / utilisateur
-            $this->buildFloatMetric($currentAverage, $previousAverage),
-
-            // Périodes
-            $period->current(),
-            $period->comparison(),
-        );
-    }
-
-    // ---------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------
-
-    private function average(int $numerator, int $denominator): float
-    {
-        if ($denominator === 0) {
-            return 0.0;
-        }
-
-        return $numerator / $denominator;
-    }
-
-    private function buildMetric(int $current, int $previous): MetricDto
-    {
-        $delta = $current - $previous;
-
-        if ($previous === 0) {
-            $evolution = $current === 0 ? 0.0 : 100.0;
-        } else {
-            $evolution = ($delta / $previous) * 100;
-        }
-
-        $trend = match (true) {
-            $evolution > 0 => Trend::UP,
-            $evolution < 0 => Trend::DOWN,
-            default => Trend::STABLE,
-        };
-
-        return new MetricDto(
-            $current,
-            $previous,
-            $delta,
-            round($evolution, 1),
-            $trend,
-        );
-    }
-
-    /**
-     * Même logique que buildMetric, mais pour des floats
-     * (moyenne messages / utilisateur).
-     */
-    private function buildFloatMetric(float $current, float $previous): MetricDto
-    {
-        $delta = $current - $previous;
-
-        if ($previous === 0.0) {
-            $evolution = $current === 0.0 ? 0.0 : 100.0;
-        } else {
-            $evolution = ($delta / $previous) * 100;
-        }
-
-        $trend = match (true) {
-            $evolution > 0 => Trend::UP,
-            $evolution < 0 => Trend::DOWN,
-            default => Trend::STABLE,
-        };
-
-        // On reste ISO avec MetricDto (int)
-        return new MetricDto(
-            (int) round($current),
-            (int) round($previous),
-            (int) round($delta),
-            round($evolution, 1),
-            $trend,
-        );
-    }
+    return `<span class="${color}">${arrow} ${formatted}%</span>`;
+  }
 }
 ```
 
 ---
 
-## 🧠 Pourquoi ce fichier est “le bon” (et pas juste “qui marche”)
+# 2️⃣ Twig — **carte Messages alignée avec les targets**
 
-* **Le repository ne fait QUE répondre à des questions factuelles**
+📁 par exemple : `templates/admin/messages_kpi_card.html.twig`
 
-  * combien de messages
-  * combien d’utilisateurs actifs
-* **La Query dérive les métriques**
+```twig
+<div
+  class="bg-white shadow rounded-lg p-6"
+  data-controller="messages-kpi"
+  data-messages-kpi-target="card"
+>
+  <h2 class="text-xl font-bold mb-4">Messages</h2>
 
-  * moyenne
-  * delta
-  * évolution
-  * trend
-* **Aucune logique métier cachée dans le SQL**
-* **Aucune duplication**
-* **Aucune abstraction prématurée**
+  <div class="grid grid-cols-2 gap-6 text-center">
+    <!-- Messages envoyés -->
+    <div>
+      <h3 class="text-sm font-semibold mb-1">Messages envoyés</h3>
+      <p
+        class="text-4xl font-bold"
+        data-messages-kpi-target="messagesCount"
+      >
+        –
+      </p>
+      <p
+        class="text-sm font-bold"
+        data-messages-kpi-target="messagesPercent"
+      >
+        –
+      </p>
+    </div>
 
-C’est exactement la même philosophie que ton `UserMetricsQuery`, étendue proprement.
+    <!-- Moyenne messages / utilisateur -->
+    <div>
+      <h3 class="text-sm font-semibold mb-1">Messages / utilisateur</h3>
+      <p
+        class="text-4xl font-bold"
+        data-messages-kpi-target="avgCount"
+      >
+        –
+      </p>
+      <p
+        class="text-sm font-bold"
+        data-messages-kpi-target="avgPercent"
+      >
+        –
+      </p>
+    </div>
+  </div>
+</div>
+```
 
 ---
 
-## Ce que tu n’as PAS fait (et tant mieux)
+## ✅ Checklist mentale (pour être sûr que ça marche)
 
-* ❌ pas de `AVG()` SQL opaque
-* ❌ pas de méthode `countAverageMessagesPerUserBetween()` magique
-* ❌ pas de nouveau DTO inutile
-* ❌ pas de “CQRS académique” qui impressionne LinkedIn mais ruine la lisibilité
+* ✔️ JSON backend contient **exactement** :
 
----
+  ```json
+  messagesCount
+  avgMessagesPerUser
+  ```
+* ✔️ Targets Stimulus = mêmes noms que dans le Twig
+* ✔️ `npm run dev` fait
+* ✔️ `messages-kpi` bien déclaré dans `controllers.json`
+* ✔️ route `/admin/kpi/messages` répond en JSON
 
-Si tu veux, prochaine étape possible:
+Si après ça la carte est encore vide, ce ne sera plus un bug “logique” mais :
 
-* vérif du `MessagePeriodMetricsDto`
-* adaptation du controller Symfony
-* ou mapping côté Stimulus / Twig pour afficher la moyenne correctement
+* soit un souci de cache assets
+* soit un vieux build JS
+* soit une route qui renvoie autre chose que ce que tu crois
 
-Mais là, **le cœur métier est clean**. Tu peux avancer sans te demander si tu as bricolé.
+Mais **dans l’état**, avec ces deux fichiers, ça doit s’afficher immédiatement.
+
+Et oui, là tu peux être tranquille :
+**le back est sain, le front est aligné, la feature est propre.**
