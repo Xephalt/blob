@@ -1,89 +1,134 @@
-<?php
+Oui.
+Et je vais être très clair, sans poudre aux yeux.
 
-declare(strict_types=1);
+👉 **À cette étape précise : OUI, tu crées juste un nouveau controller Stimulus.**
+👉 **NON, rien d’autre n’est “automatique par magie”.**
+Il y a **3 petites choses obligatoires** à faire, et **si tu en oublies une, ça ne marchera pas**.
 
-namespace App\Controller\Admin;
+Je te fais donc la **check-list exacte**, dans l’ordre, sans bla-bla.
 
-use App\Application\Admin\UseCase\GetUserMetrics;
-use App\Application\Admin\UseCase\GetUserMetricsHandler;
-use App\Application\Admin\UseCase\GetMessageMetrics;
-use App\Application\Admin\UseCase\GetMessageMetricsHandler;
-use App\Application\Common\Period\PeriodResolver;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Routing\Annotation\Route;
-use Symfony\Component\Security\Http\Attribute\IsGranted;
+---
 
-#[IsGranted('ROLE_ADMIN')]
-#[Route('/admin', name: 'admin_')]
-final class KpiController extends AbstractController
+## ✅ Ce que tu as DÉJÀ
+
+* ✔️ Backend `/admin/kpi/messages` OK
+* ✔️ Event global `kpi-filter:changed` déjà dispatché
+* ✔️ Period + weekdays déjà normalisés
+* ✔️ KPI users déjà fonctionnel (référence)
+
+---
+
+## 1️⃣ Créer le controller Stimulus Messages
+
+✔️ **Oui, c’est un copier-coller du users_kpi_controller**
+✔️ **Oui, tu adaptes l’URL + les targets**
+✔️ **Oui, c’est suffisant côté JS**
+
+➡️ Le fichier :
+
+```
+assets/controllers/messages_kpi_controller.js
+```
+
+Le code que je t’ai donné est **directement utilisable**.
+
+---
+
+## 2️⃣ L’enregistrer dans Stimulus (OBLIGATOIRE)
+
+Rien n’est automatique ici.
+
+Tu dois ajouter **UNE ligne** dans :
+
+### `assets/controllers.json`
+
+```json
 {
-    public function __construct(
-        private readonly PeriodResolver $periodResolver,
-        private readonly GetUserMetricsHandler $userHandler,
-        private readonly GetMessageMetricsHandler $messageHandler,
-    ) {
+  "controllers": {
+    "users-kpi": {
+      "enabled": true,
+      "fetch": "eager"
+    },
+    "messages-kpi": {
+      "enabled": true,
+      "fetch": "eager"
     }
-
-    #[Route('/kpi/users', name: 'kpi_users', methods: ['GET'])]
-    public function users(Request $request): JsonResponse
-    {
-        $resolvedPeriod = $this->resolvePeriod($request);
-        $weekdays = $this->resolveWeekdays($request);
-
-        $result = $this->userHandler->handle(
-            new GetUserMetrics($resolvedPeriod, $weekdays)
-        );
-
-        return $this->json($result);
-    }
-
-    #[Route('/kpi/messages', name: 'kpi_messages', methods: ['GET'])]
-    public function messages(Request $request): JsonResponse
-    {
-        $resolvedPeriod = $this->resolvePeriod($request);
-        $weekdays = $this->resolveWeekdays($request);
-
-        $result = $this->messageHandler->handle(
-            new GetMessageMetrics($resolvedPeriod, $weekdays)
-        );
-
-        return $this->json($result);
-    }
-
-    /**
-     * Résolution centralisée de la période (ISO users/messages)
-     */
-    private function resolvePeriod(Request $request)
-    {
-        $dateFrom = $request->query->get('date_from');
-        $dateTo = $request->query->get('date_to');
-
-        return $this->periodResolver->resolve($dateFrom, $dateTo);
-    }
-
-    /**
-     * Normalisation du paramètre weekdays.
-     *
-     * Exemples acceptés :
-     *  - null
-     *  - "1,3,5"
-     *
-     * @return int[]|null
-     */
-    private function resolveWeekdays(Request $request): ?array
-    {
-        $weekdaysRaw = $request->query->get('weekdays');
-
-        if ($weekdaysRaw === null || $weekdaysRaw === '') {
-            return null;
-        }
-
-        $weekdays = array_filter(
-            array_map('intval', explode(',', (string) $weekdaysRaw))
-        );
-
-        return $weekdays !== [] ? $weekdays : null;
-    }
+  }
 }
+```
+
+👉 Sans ça :
+
+* le controller **ne sera jamais chargé**
+* aucun `connect()`
+* aucun `fetch()`
+
+---
+
+## 3️⃣ Lier le controller dans le Twig (OBLIGATOIRE)
+
+Dans le **HTML de la carte Messages** :
+
+```html
+<div
+  data-controller="messages-kpi"
+  data-messages-kpi-target="card"
+>
+```
+
+Et pour chaque valeur :
+
+```html
+<span data-messages-kpi-target="messageCount"></span>
+<span data-messages-kpi-target="messagePercent"></span>
+
+<span data-messages-kpi-target="messageAvg"></span>
+<span data-messages-kpi-target="messageAvgPercent"></span>
+```
+
+👉 Les `data-*-target` **doivent matcher EXACTEMENT** le JS.
+
+---
+
+## 4️⃣ Ce que tu N’AS PAS à faire (et surtout pas)
+
+❌ Modifier `kpi_filter_controller`
+❌ Ajouter un nouvel event
+❌ Modifier `users_kpi_controller`
+❌ Toucher au backend
+❌ Factoriser le JS
+❌ Créer un `MessageController` Symfony
+
+---
+
+## 5️⃣ Pourquoi “ça marche tout seul” après ça
+
+Parce que ton système est déjà bien pensé :
+
+* le filtre dispatch **1 événement**
+* toutes les cards l’écoutent
+* chaque card décide :
+
+  * quelle URL appeler
+  * comment afficher
+
+👉 **Les cards sont passives**
+👉 **Le filtre est le chef d’orchestre**
+
+C’est exactement comme ça que ça devait être fait.
+
+---
+
+## 🧠 Résumé brutal (mais honnête)
+
+| Action                                | À faire ? |
+| ------------------------------------- | --------- |
+| Créer `messages_kpi_controller.js`    | ✅ oui     |
+| L’enregistrer dans `controllers.json` | ✅ oui     |
+| Ajouter `data-controller` dans Twig   | ✅ oui     |
+| Toucher au filtre                     | ❌ non     |
+| Refactor                              | ❌ non     |
+
+---
+
+Si tu veux, prochain message on fait **le Twig de la carte Messages** ensemble, propre, ISO users, sans duplication dégueu.
