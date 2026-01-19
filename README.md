@@ -1,134 +1,256 @@
-Oui.
-Et je vais être très clair, sans poudre aux yeux.
+Bon. Là on n’est plus dans la théorie ni l’architecture PowerPoint. On est dans **“finir la feature sans tout casser”**.
+Et franchement, ton setup Stimulus est **déjà très bon**. Tu n’as **rien à réinventer**, juste à **dupliquer intelligemment**.
 
-👉 **À cette étape précise : OUI, tu crées juste un nouveau controller Stimulus.**
-👉 **NON, rien d’autre n’est “automatique par magie”.**
-Il y a **3 petites choses obligatoires** à faire, et **si tu en oublies une, ça ne marchera pas**.
-
-Je te fais donc la **check-list exacte**, dans l’ordre, sans bla-bla.
+Je vais donc te dire **exactement quoi faire**, étape par étape, **sans refactor global**, **sans abstraction prématurée**, et **en restant ISO avec Users**.
 
 ---
 
-## ✅ Ce que tu as DÉJÀ
+# Objectif clair (rappel)
 
-* ✔️ Backend `/admin/kpi/messages` OK
-* ✔️ Event global `kpi-filter:changed` déjà dispatché
-* ✔️ Period + weekdays déjà normalisés
-* ✔️ KPI users déjà fonctionnel (référence)
+Ajouter **une carte Messages** qui :
+
+* réagit **au même period picker**
+* réagit **aux mêmes weekdays**
+* tape `/admin/kpi/messages`
+* affiche :
+
+  * nombre de messages
+  * messages / utilisateur en moyenne
+  * évolution + trend
+
+👉 **ZÉRO nouvelle logique de filtre**
+👉 **ZÉRO nouvelle communication globale**
+👉 On réutilise **l’événement `kpi-filter:changed`**
 
 ---
 
-## 1️⃣ Créer le controller Stimulus Messages
+## 1️⃣ KPI Filter Controller (Stimulus)
 
-✔️ **Oui, c’est un copier-coller du users_kpi_controller**
-✔️ **Oui, tu adaptes l’URL + les targets**
-✔️ **Oui, c’est suffisant côté JS**
+### ❌ Rien à changer
 
-➡️ Le fichier :
+Et c’est important de le dire.
+
+Ton `kpi_filter_controller.js` :
+
+* construit la query string
+* dispatch `kpi-filter:changed`
+* expose `detail.url`
+
+👉 **Il est générique**
+👉 **Il ne doit PAS connaître Users ou Messages**
+
+✔️ On touche à rien.
+
+---
+
+## 2️⃣ KPI Users Card Controller
+
+Tu as aujourd’hui un truc du genre (simplifié) :
+
+```js
+// users_kpi_controller.js
+this.fetch({ detail: { url: '/admin/kpi/users?...' } })
+```
+
+Ce controller :
+
+* écoute `kpi-filter:changed`
+* fetch une URL
+* met à jour une card
+
+👉 **Le pattern est parfait**
+👉 On va faire **EXACTEMENT le même** pour Messages
+
+---
+
+## 3️⃣ Ce que tu DOIS faire pour Messages
+
+### Étape 1 — Créer un nouveau controller Stimulus
+
+👉 **Dupliquer**, pas abstraire.
 
 ```
 assets/controllers/messages_kpi_controller.js
 ```
 
-Le code que je t’ai donné est **directement utilisable**.
-
 ---
 
-## 2️⃣ L’enregistrer dans Stimulus (OBLIGATOIRE)
+### Étape 2 — Adapter UNIQUEMENT 3 choses
 
-Rien n’est automatique ici.
+#### 1. l’URL
 
-Tu dois ajouter **UNE ligne** dans :
+```diff
+- '/admin/kpi/users'
++ '/admin/kpi/messages'
+```
 
-### `assets/controllers.json`
+#### 2. les targets
+
+Messages ≠ Users, donc :
+
+* `messageCount`
+* `messageAvg`
+* `messagePercent`
+* `messageAvgPercent`
+* `card`
+
+#### 3. le mapping JSON
+
+Ton backend renverra (exemple) :
 
 ```json
 {
-  "controllers": {
-    "users-kpi": {
-      "enabled": true,
-      "fetch": "eager"
-    },
-    "messages-kpi": {
-      "enabled": true,
-      "fetch": "eager"
+  "messages": { ... },
+  "messagesPerUser": { ... }
+}
+```
+
+---
+
+## 4️⃣ Controller Stimulus Messages (COMPLET)
+
+Voici **un fichier prêt à poser**, ISO users, sans magie.
+
+```js
+// assets/controllers/messages_kpi_controller.js
+import { Controller } from '@hotwired/stimulus';
+
+export default class extends Controller {
+  static targets = [
+    'messageCount',
+    'messagePercent',
+    'messageAvg',
+    'messageAvgPercent',
+    'card'
+  ];
+
+  connect() {
+    this.boundFetch = this.fetch.bind(this);
+    document.addEventListener('kpi-filter:changed', this.boundFetch);
+  }
+
+  disconnect() {
+    document.removeEventListener('kpi-filter:changed', this.boundFetch);
+  }
+
+  async fetch(event) {
+    const url = event.detail?.url?.replace('/users', '/messages');
+    if (!url) return;
+
+    try {
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin',
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      this.updateCard(data);
+    } catch (e) {
+      console.error('Erreur KPI messages', e);
+      this.cardTarget.innerHTML =
+        '<p class="text-danger">Impossible de charger les données</p>';
     }
+  }
+
+  updateCard(data) {
+    const messages = data.messages ?? {};
+    const avg = data.messagesPerUser ?? {};
+
+    this.messageCountTarget.textContent = messages.count ?? '–';
+    this.messagePercentTarget.innerHTML =
+      this.formatPercent(messages.evolutionPercent, messages.trend);
+
+    this.messageAvgTarget.textContent = avg.count ?? '–';
+    this.messageAvgPercentTarget.innerHTML =
+      this.formatPercent(avg.evolutionPercent, avg.trend);
+  }
+
+  formatPercent(value, trend) {
+    if (value === null || value === undefined) return '–';
+
+    const arrow =
+      trend === 'up'
+        ? '<i class="fa-solid fa-caret-up"></i>'
+        : trend === 'down'
+        ? '<i class="fa-solid fa-caret-down"></i>'
+        : '';
+
+    const color =
+      trend === 'up'
+        ? 'text-success'
+        : trend === 'down'
+        ? 'text-danger'
+        : 'text-muted';
+
+    const formatted = Number(value).toLocaleString(undefined, {
+      maximumFractionDigits: 1,
+    });
+
+    return `<span class="${color}">${arrow} ${formatted}%</span>`;
   }
 }
 ```
 
-👉 Sans ça :
+---
 
-* le controller **ne sera jamais chargé**
-* aucun `connect()`
-* aucun `fetch()`
+## 5️⃣ Pourquoi c’est la bonne approche (et pas une abstraction)
+
+Tu pourrais te dire :
+
+> “On pourrait faire un `BaseKpiController` JS”
+
+Oui.
+Et ce serait une **erreur maintenant**.
+
+Pourquoi ?
+
+* tu n’as que **2 cartes**
+* elles n’ont pas **exactement les mêmes champs**
+* la duplication est **faible et lisible**
+* le jour où ça diverge, tu seras content de ne pas avoir factorisé
+
+👉 **TDD mental validé**
+👉 **Charge cognitive minimale**
 
 ---
 
-## 3️⃣ Lier le controller dans le Twig (OBLIGATOIRE)
+## 6️⃣ Ce qu’il te reste à faire (checklist finale)
 
-Dans le **HTML de la carte Messages** :
+### Backend
 
-```html
-<div
-  data-controller="messages-kpi"
-  data-messages-kpi-target="card"
->
-```
+* [x] `/admin/kpi/messages`
+* [x] DTO ISO users
+* [x] handler OK
 
-Et pour chaque valeur :
+### Front
 
-```html
-<span data-messages-kpi-target="messageCount"></span>
-<span data-messages-kpi-target="messagePercent"></span>
+* [x] `messages_kpi_controller.js`
+* [ ] enregistrer le controller dans `controllers.json`
+* [ ] ajouter `data-controller="messages-kpi"` sur la card Twig
+* [ ] ajouter les bons `data-*-target`
 
-<span data-messages-kpi-target="messageAvg"></span>
-<span data-messages-kpi-target="messageAvgPercent"></span>
-```
+### Twig
 
-👉 Les `data-*-target` **doivent matcher EXACTEMENT** le JS.
+👉 On fera ça **après**, proprement.
 
 ---
 
-## 4️⃣ Ce que tu N’AS PAS à faire (et surtout pas)
+## Conclusion honnête
 
-❌ Modifier `kpi_filter_controller`
-❌ Ajouter un nouvel event
-❌ Modifier `users_kpi_controller`
-❌ Toucher au backend
-❌ Factoriser le JS
-❌ Créer un `MessageController` Symfony
+Tu as :
 
----
+* une **architecture saine**
+* un **event global bien pensé**
+* un **backend clean**
+* un **front extensible sans refactor**
 
-## 5️⃣ Pourquoi “ça marche tout seul” après ça
+Tu ne fais pas “du bricolage”.
+Tu fais **exactement ce qu’il faut**, au bon moment.
 
-Parce que ton système est déjà bien pensé :
-
-* le filtre dispatch **1 événement**
-* toutes les cards l’écoutent
-* chaque card décide :
-
-  * quelle URL appeler
-  * comment afficher
-
-👉 **Les cards sont passives**
-👉 **Le filtre est le chef d’orchestre**
-
-C’est exactement comme ça que ça devait être fait.
-
----
-
-## 🧠 Résumé brutal (mais honnête)
-
-| Action                                | À faire ? |
-| ------------------------------------- | --------- |
-| Créer `messages_kpi_controller.js`    | ✅ oui     |
-| L’enregistrer dans `controllers.json` | ✅ oui     |
-| Ajouter `data-controller` dans Twig   | ✅ oui     |
-| Toucher au filtre                     | ❌ non     |
-| Refactor                              | ❌ non     |
-
----
-
-Si tu veux, prochain message on fait **le Twig de la carte Messages** ensemble, propre, ISO users, sans duplication dégueu.
+Quand tu veux, prochaine étape :
+👉 **le Twig de la card Messages**
+et je t’aiderai à le rendre **ISO visuellement** avec Users, sans copier-coller dégueu.
