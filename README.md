@@ -1,148 +1,268 @@
-Short answer : **si, c’est possible en flex**.
-Long answer : **oui, mais tu perds des trucs et tu gagnes autre chose**. Et dans ton cas précis, flex est même **un peu plus cohérent mentalement** que grid.
+Bon. On respire deux secondes, on enlève le bruit UI, et on fait ce que tu demandes vraiment : **la logique métier de la carte “Réponses”**, propre, lisible, et ISO avec ce que tu as déjà.
 
-Je t’explique calmement, sans dogme.
+Je vais être cash, parce que là on est exactement au moment où on peut soit faire un truc propre, soit fabriquer un futur plat de spaghetti statistiques.
 
 ---
 
-## 1️⃣ Pourquoi Flex règle *exactement* ton problème
+## 1️⃣ Ce que dit le métier (pas la DB, pas le UI)
 
-Flexbox **égalise naturellement la hauteur des items sur une même ligne**.
+Indépendamment de la table `message`, **le besoin métier est clair** :
 
-Quand tu fais :
+> Sur une période donnée, je veux **des métriques agrégées sur les réponses** :
 
-```css
-.container {
-  display: flex;
-}
+* Temps moyen de réponse
+* Proportion de réponses :
+
+  * likées
+  * dislikées
+  * sans évaluation
+* Et pour chacune, **l’évolution par rapport à la période précédente**
+
+Ça, c’est **un Use Case de lecture**, pur CQRS.
+
+Pas un controller.
+Pas un repository exposé au twig.
+Pas une bidouille dans le front.
+
+---
+
+## 2️⃣ Où ça vit dans une archi propre
+
+### 👉 **Dans l’APPLICATION**, pas ailleurs.
+
+Concrètement :
+
+```
+src/
+ └─ Application/
+     └─ Query/
+         └─ MessageResponseMetrics/
+             ├─ MessageResponseMetricsQuery.php
+             ├─ MessageResponseMetricsHandler.php
+             ├─ MessageResponseMetrics.php   ← DTO de sortie
 ```
 
-Par défaut :
+Pourquoi ici ?
 
-* `align-items: stretch`
-* → tous les enfants **prennent la hauteur du plus grand**
+* Ce n’est **pas du domaine pur** (pas d’invariant métier)
+* Ce n’est **pas de l’infra** (SQL, Doctrine, etc.)
+* C’est une **orchestration de lecture** → Application Query
+
+---
+
+## 3️⃣ Le modèle mental (très important)
+
+### Ce Use Case répond à UNE question :
+
+> “Quelles sont les métriques de réponses sur une période donnée, comparées à la période précédente ?”
 
 Donc :
 
-* un `h3` qui passe sur 2 lignes
-* la carte grandit
-* **toutes les autres suivent automatiquement**
-* même pendant le resize
-* sans `min-height`
-* sans hacks
+* **1 Query**
+* **1 Handler**
+* **1 DTO de sortie**
 
-👉 **C’est exactement le comportement que tu cherches.**
-
----
-
-## 2️⃣ Implémentation Flex propre pour ton cas
-
-### HTML inchangé
-
-Tu gardes :
-
-```html
-<div class="container-cards">
-  {% include 'admin/users_kpi_card.html.twig' %}
-  {% include 'admin/messages_kpi_card.html.twig' %}
-</div>
-```
+Pas 4 méthodes éparpillées.
+Pas de calculs dans le controller.
+Pas de logique cachée dans Twig.
 
 ---
 
-### CSS Flex recommandé
+## 4️⃣ La Query (intention métier, rien d’autre)
 
-```css
-.container-cards {
-  display: flex;
-  gap: 10px;
-  align-items: stretch;
-}
+```php
+// src/Application/Query/MessageResponseMetrics/MessageResponseMetricsQuery.php
 
-/* Chaque carte prend la même hauteur */
-.container-cards > * {
-  flex: 1;
-  display: flex;
-}
-
-/* Carte interne */
-.container-cards .card {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+final class MessageResponseMetricsQuery
+{
+    public function __construct(
+        public readonly \DateTimeImmutable $from,
+        public readonly \DateTimeImmutable $to,
+    ) {}
 }
 ```
 
-Résultat :
-
-* Hauteur toujours synchronisée
-* Resize fluide
-* Aucun min-height forcé
-* Aucun comportement “surprenant”
+Simple. Immuable. Lisible.
+Elle dit **quoi**, pas **comment**.
 
 ---
 
-## 3️⃣ Responsive en Flex (empilement)
+## 5️⃣ Le DTO de sortie (ce que la carte consomme)
 
-```css
-@media (max-width: 768px) {
-  .container-cards {
-    flex-direction: column;
-  }
+```php
+// src/Application/Query/MessageResponseMetrics/MessageResponseMetrics.php
+
+final class MessageResponseMetrics
+{
+    public function __construct(
+        public readonly float $avgResponseTimeSeconds,
+
+        public readonly float $likedRatio,
+        public readonly float $dislikedRatio,
+        public readonly float $noEvaluationRatio,
+
+        public readonly float $avgResponseTimeEvolution,
+        public readonly float $likedRatioEvolution,
+        public readonly float $dislikedRatioEvolution,
+        public readonly float $noEvaluationRatioEvolution,
+    ) {}
 }
 ```
 
-Simple. Lisible. Robuste.
+Important :
+
+* **Pas de logique**
+* **Pas de calcul**
+* C’est un **contrat de sortie**, point
+
+Le front ou Twig n’a plus à deviner quoi que ce soit.
 
 ---
 
-## 4️⃣ Grid vs Flex — décision **objective** ici
+## 6️⃣ Le Handler (là où la logique vit vraiment)
 
-| Critère                   | Grid                 | Flex      |
-| ------------------------- | -------------------- | --------- |
-| Hauteur égale automatique | ❌ non fiable         | ✅ oui     |
-| Resize fluide             | ❌ parfois surprenant | ✅ naturel |
-| Layout 2 cartes           | 😐 overkill          | ✅ parfait |
-| 3–4 cartes dynamiques     | ✅                    | 😐        |
-| Lisibilité mentale        | 😐                   | ✅         |
-| Besoin min-height         | ✅                    | ❌         |
+### Responsabilités claires :
 
-👉 **Pour 2 cartes KPI côte à côte → Flex est objectivement meilleur.**
+* Calculer la période courante
+* Calculer la période précédente
+* Comparer
+* Normaliser (ratios, pourcentages)
+
+```php
+// src/Application/Query/MessageResponseMetrics/MessageResponseMetricsHandler.php
+
+final class MessageResponseMetricsHandler
+{
+    public function __construct(
+        private MessageRepository $messageRepository,
+    ) {}
+
+    public function __invoke(MessageResponseMetricsQuery $query): MessageResponseMetrics
+    {
+        $current = $this->messageRepository->responseStatsBetween(
+            $query->from,
+            $query->to
+        );
+
+        $previousPeriod = $this->previousPeriod($query->from, $query->to);
+
+        $previous = $this->messageRepository->responseStatsBetween(
+            $previousPeriod['from'],
+            $previousPeriod['to']
+        );
+
+        return new MessageResponseMetrics(
+            avgResponseTimeSeconds: $current['avg_response_time'],
+            likedRatio: $current['liked_ratio'],
+            dislikedRatio: $current['disliked_ratio'],
+            noEvaluationRatio: $current['no_eval_ratio'],
+
+            avgResponseTimeEvolution: $this->evolution(
+                $current['avg_response_time'],
+                $previous['avg_response_time']
+            ),
+            likedRatioEvolution: $this->evolution(
+                $current['liked_ratio'],
+                $previous['liked_ratio']
+            ),
+            dislikedRatioEvolution: $this->evolution(
+                $current['disliked_ratio'],
+                $previous['disliked_ratio']
+            ),
+            noEvaluationRatioEvolution: $this->evolution(
+                $current['no_eval_ratio'],
+                $previous['no_eval_ratio']
+            ),
+        );
+    }
+
+    private function evolution(float $current, float $previous): float
+    {
+        if ($previous === 0.0) {
+            return 0.0;
+        }
+
+        return (($current - $previous) / $previous) * 100;
+    }
+
+    private function previousPeriod(
+        \DateTimeImmutable $from,
+        \DateTimeImmutable $to
+    ): array {
+        $duration = $to->getTimestamp() - $from->getTimestamp();
+
+        return [
+            'from' => $from->modify("-{$duration} seconds"),
+            'to'   => $from,
+        ];
+    }
+}
+```
+
+Oui, c’est plus long qu’un `SELECT`.
+Mais maintenant :
+
+* Tout est **testable**
+* Tout est **lisible**
+* Tout est **évolutif**
 
 ---
 
-## 5️⃣ Pourquoi Grid est moins adapté ici
+## 7️⃣ Le Repository (infrastructure, pas métier)
 
-Grid est génial pour :
+Ici tu fais **UNE query agrégée**, pas 12 :
 
-* des dashboards complexes
-* des matrices
-* des layouts asymétriques
+```php
+public function responseStatsBetween(
+    \DateTimeImmutable $from,
+    \DateTimeImmutable $to
+): array {
+    return $this->createQueryBuilder('m')
+        ->select('
+            AVG(m.timeToAnswer) as avg_response_time,
+            SUM(CASE WHEN m.isLiked = 1 THEN 1 ELSE 0 END) / COUNT(m.id) as liked_ratio,
+            SUM(CASE WHEN m.isLiked = 0 THEN 1 ELSE 0 END) / COUNT(m.id) as disliked_ratio,
+            SUM(CASE WHEN m.isLiked IS NULL THEN 1 ELSE 0 END) / COUNT(m.id) as no_eval_ratio
+        ')
+        ->where('m.createdAt BETWEEN :from AND :to')
+        ->setParameters(compact('from', 'to'))
+        ->getQuery()
+        ->getSingleResult();
+}
+```
 
-Mais toi tu veux :
-
-* des cartes homogènes
-* une ligne
-* une hauteur commune
-* un comportement stable au resize
-
-👉 **Flexbox est fait pour ça.**
+L’Application **ne sait pas comment** c’est calculé.
+Elle sait juste que ça marche.
 
 ---
 
-## Verdict clair (sans idéologie)
+## 8️⃣ Pourquoi c’est la bonne décision (objectivement)
 
-* Si tu restes à **2–3 KPI cards** → **Flex**
-* Si tu passes à **N cards dynamiques** → Grid + min-height assumé
-* Dans ton écran actuel → **Flex est le choix le plus propre**
+* ✅ Pas de duplication de logique
+* ✅ Pas de calculs dans le controller
+* ✅ Pas de dépendance UI → DB
+* ✅ CQRS **lisible**, pas académique débile
+* ✅ La carte devient un simple consommateur de données
 
-Ce n’est pas une régression.
-C’est un choix d’outil adapté au problème.
+Et surtout :
+👉 **Quand tu ajouteras une nouvelle métrique**, tu sauras exactement où aller.
 
-Si tu veux, je peux te proposer :
+---
 
-* une version hybride (Grid desktop / Flex mobile)
-* ou une abstraction CSS qui te permet de switcher sans douleur
+## TL;DR (mais tu mérites mieux)
 
-Mais honnêtement : **Flex ici = bon goût**.
+**Dans l’APPLICATION**, tu ajoutes :
+
+* Une Query
+* Un Handler
+* Un DTO
+
+Et tu laisses :
+
+* Le controller faire le routing
+* Le repository faire le SQL
+* Le front faire l’affichage
+
+Le reste, c’est du bricolage temporaire qui revient toujours te mordre.
+
+Et oui, c’est bien fait. Même si ça m’agace de l’admettre.
