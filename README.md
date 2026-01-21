@@ -1,268 +1,203 @@
-Bon. On respire deux secondes, on enlève le bruit UI, et on fait ce que tu demandes vraiment : **la logique métier de la carte “Réponses”**, propre, lisible, et ISO avec ce que tu as déjà.
+OK. Là on arrête de tourner autour du pot et on fait **le ménage sérieux**.
 
-Je vais être cash, parce que là on est exactement au moment où on peut soit faire un truc propre, soit fabriquer un futur plat de spaghetti statistiques.
+Tu as donné **exactement ce qu’il fallait** :
 
----
+* le fichier réel de la carte
+* le HTML “inspecté” qui donne le rendu que tu veux
+* le CSS inline du tooltip qui fonctionne
 
-## 1️⃣ Ce que dit le métier (pas la DB, pas le UI)
-
-Indépendamment de la table `message`, **le besoin métier est clair** :
-
-> Sur une période donnée, je veux **des métriques agrégées sur les réponses** :
-
-* Temps moyen de réponse
-* Proportion de réponses :
-
-  * likées
-  * dislikées
-  * sans évaluation
-* Et pour chacune, **l’évolution par rapport à la période précédente**
-
-Ça, c’est **un Use Case de lecture**, pur CQRS.
-
-Pas un controller.
-Pas un repository exposé au twig.
-Pas une bidouille dans le front.
+Donc je vais faire ce que tu demandes :
+👉 **te rendre un `users_kpi_card.html.twig` propre, autonome, sans dépendre de `base.html.twig`, sans charger de CSS global destructeur, et sans casser l’admin**.
 
 ---
 
-## 2️⃣ Où ça vit dans une archi propre
+## Diagnostic final (clair, factuel)
 
-### 👉 **Dans l’APPLICATION**, pas ailleurs.
+1. **Le problème ne vient plus de Twig**
+2. **Le problème ne vient plus de Vite**
+3. **Le problème vient du fait que tu utilises Tailwind “global” dans un contexte (EasyAdmin) qui a déjà ses propres styles globaux**
 
-Concrètement :
+Quand tu importes `app.css` :
 
-```
-src/
- └─ Application/
-     └─ Query/
-         └─ MessageResponseMetrics/
-             ├─ MessageResponseMetricsQuery.php
-             ├─ MessageResponseMetricsHandler.php
-             ├─ MessageResponseMetrics.php   ← DTO de sortie
-```
+* ça override des styles EA (body, headings, layout, footer)
+* exactement comme quand tu faisais `extends base.html.twig`
 
-Pourquoi ici ?
+👉 **Conclusion logique**
+Si tu veux que cette carte soit stable **dans l’admin**, elle doit :
 
-* Ce n’est **pas du domaine pur** (pas d’invariant métier)
-* Ce n’est **pas de l’infra** (SQL, Doctrine, etc.)
-* C’est une **orchestration de lecture** → Application Query
+* utiliser **des classes préfixées**
+* avoir **son CSS local**
+* ne plus dépendre des classes Tailwind génériques (`text-xl`, `grid`, `flex`, etc.)
 
----
-
-## 3️⃣ Le modèle mental (très important)
-
-### Ce Use Case répond à UNE question :
-
-> “Quelles sont les métriques de réponses sur une période donnée, comparées à la période précédente ?”
-
-Donc :
-
-* **1 Query**
-* **1 Handler**
-* **1 DTO de sortie**
-
-Pas 4 méthodes éparpillées.
-Pas de calculs dans le controller.
-Pas de logique cachée dans Twig.
+C’est la seule solution robuste dans EasyAdmin.
+Et oui, c’est chiant. Bienvenue dans le monde réel.
 
 ---
 
-## 4️⃣ La Query (intention métier, rien d’autre)
+## Stratégie retenue (la bonne)
 
-```php
-// src/Application/Query/MessageResponseMetrics/MessageResponseMetricsQuery.php
+* ✅ HTML Twig propre
+* ✅ Classes **scopées** `users-kpi-*`
+* ✅ CSS **local**, non destructeur
+* ✅ Tooltip inclus, sans dépendance Tailwind
+* ❌ PLUS AUCUNE classe Tailwind générique
 
-final class MessageResponseMetricsQuery
-{
-    public function __construct(
-        public readonly \DateTimeImmutable $from,
-        public readonly \DateTimeImmutable $to,
-    ) {}
+---
+
+## ✅ NOUVEAU `users_kpi_card.html.twig` (PROPRE)
+
+Tu peux **copier-coller tel quel**.
+
+```twig
+{# templates/admin/users_kpi_card.html.twig #}
+
+<div class="users-kpi" data-controller="users-kpi">
+  <h2 class="users-kpi__title">Utilisateurs</h2>
+
+  <div class="users-kpi__card" data-users-kpi-target="card">
+    <div class="users-kpi__grid">
+
+      {# Enregistrés #}
+      <div class="users-kpi__item">
+        <div class="users-kpi__item-title">
+          Enregistrés
+          {% include 'components/info_tooltip.html.twig' with {
+            text: "Nombre d'utilisateurs inscrits sur la plateforme pendant la période sélectionnée.",
+            class: 'users-kpi__tooltip'
+          } %}
+        </div>
+
+        <div class="users-kpi__value" data-users-kpi-target="registeredCount"></div>
+        <div class="users-kpi__percent" data-users-kpi-target="registeredPercent"></div>
+      </div>
+
+      {# Actifs #}
+      <div class="users-kpi__item">
+        <div class="users-kpi__item-title">
+          Actifs
+          {% include 'components/info_tooltip.html.twig' with {
+            text: "Nombre d'utilisateurs ayant envoyé au moins un message pendant la période sélectionnée.",
+            class: 'users-kpi__tooltip'
+          } %}
+        </div>
+
+        <div class="users-kpi__value" data-users-kpi-target="activeCount"></div>
+        <div class="users-kpi__percent" data-users-kpi-target="activePercent"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<style>
+/* =========================
+   USERS KPI – SCOPED STYLES
+   ========================= */
+
+.users-kpi {
+  display: flex;
+  flex-direction: column;
 }
-```
 
-Simple. Immuable. Lisible.
-Elle dit **quoi**, pas **comment**.
-
----
-
-## 5️⃣ Le DTO de sortie (ce que la carte consomme)
-
-```php
-// src/Application/Query/MessageResponseMetrics/MessageResponseMetrics.php
-
-final class MessageResponseMetrics
-{
-    public function __construct(
-        public readonly float $avgResponseTimeSeconds,
-
-        public readonly float $likedRatio,
-        public readonly float $dislikedRatio,
-        public readonly float $noEvaluationRatio,
-
-        public readonly float $avgResponseTimeEvolution,
-        public readonly float $likedRatioEvolution,
-        public readonly float $dislikedRatioEvolution,
-        public readonly float $noEvaluationRatioEvolution,
-    ) {}
+.users-kpi__title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
 }
-```
 
-Important :
-
-* **Pas de logique**
-* **Pas de calcul**
-* C’est un **contrat de sortie**, point
-
-Le front ou Twig n’a plus à deviner quoi que ce soit.
-
----
-
-## 6️⃣ Le Handler (là où la logique vit vraiment)
-
-### Responsabilités claires :
-
-* Calculer la période courante
-* Calculer la période précédente
-* Comparer
-* Normaliser (ratios, pourcentages)
-
-```php
-// src/Application/Query/MessageResponseMetrics/MessageResponseMetricsHandler.php
-
-final class MessageResponseMetricsHandler
-{
-    public function __construct(
-        private MessageRepository $messageRepository,
-    ) {}
-
-    public function __invoke(MessageResponseMetricsQuery $query): MessageResponseMetrics
-    {
-        $current = $this->messageRepository->responseStatsBetween(
-            $query->from,
-            $query->to
-        );
-
-        $previousPeriod = $this->previousPeriod($query->from, $query->to);
-
-        $previous = $this->messageRepository->responseStatsBetween(
-            $previousPeriod['from'],
-            $previousPeriod['to']
-        );
-
-        return new MessageResponseMetrics(
-            avgResponseTimeSeconds: $current['avg_response_time'],
-            likedRatio: $current['liked_ratio'],
-            dislikedRatio: $current['disliked_ratio'],
-            noEvaluationRatio: $current['no_eval_ratio'],
-
-            avgResponseTimeEvolution: $this->evolution(
-                $current['avg_response_time'],
-                $previous['avg_response_time']
-            ),
-            likedRatioEvolution: $this->evolution(
-                $current['liked_ratio'],
-                $previous['liked_ratio']
-            ),
-            dislikedRatioEvolution: $this->evolution(
-                $current['disliked_ratio'],
-                $previous['disliked_ratio']
-            ),
-            noEvaluationRatioEvolution: $this->evolution(
-                $current['no_eval_ratio'],
-                $previous['no_eval_ratio']
-            ),
-        );
-    }
-
-    private function evolution(float $current, float $previous): float
-    {
-        if ($previous === 0.0) {
-            return 0.0;
-        }
-
-        return (($current - $previous) / $previous) * 100;
-    }
-
-    private function previousPeriod(
-        \DateTimeImmutable $from,
-        \DateTimeImmutable $to
-    ): array {
-        $duration = $to->getTimestamp() - $from->getTimestamp();
-
-        return [
-            'from' => $from->modify("-{$duration} seconds"),
-            'to'   => $from,
-        ];
-    }
+.users-kpi__card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  height: 100%;
 }
-```
 
-Oui, c’est plus long qu’un `SELECT`.
-Mais maintenant :
-
-* Tout est **testable**
-* Tout est **lisible**
-* Tout est **évolutif**
-
----
-
-## 7️⃣ Le Repository (infrastructure, pas métier)
-
-Ici tu fais **UNE query agrégée**, pas 12 :
-
-```php
-public function responseStatsBetween(
-    \DateTimeImmutable $from,
-    \DateTimeImmutable $to
-): array {
-    return $this->createQueryBuilder('m')
-        ->select('
-            AVG(m.timeToAnswer) as avg_response_time,
-            SUM(CASE WHEN m.isLiked = 1 THEN 1 ELSE 0 END) / COUNT(m.id) as liked_ratio,
-            SUM(CASE WHEN m.isLiked = 0 THEN 1 ELSE 0 END) / COUNT(m.id) as disliked_ratio,
-            SUM(CASE WHEN m.isLiked IS NULL THEN 1 ELSE 0 END) / COUNT(m.id) as no_eval_ratio
-        ')
-        ->where('m.createdAt BETWEEN :from AND :to')
-        ->setParameters(compact('from', 'to'))
-        ->getQuery()
-        ->getSingleResult();
+.users-kpi__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  padding: 1rem;
+  text-align: center;
 }
+
+.users-kpi__item {
+  position: relative;
+}
+
+.users-kpi__item-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.users-kpi__value {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: #00875a; /* vert KPI */
+}
+
+.users-kpi__percent {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+/* =========================
+   TOOLTIP (LOCAL, SAFE)
+   ========================= */
+
+.users-kpi__tooltip {
+  position: relative;
+}
+
+.users-kpi__tooltip .tooltip {
+  opacity: 0;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.users-kpi__tooltip:hover .tooltip,
+.users-kpi__tooltip:focus-within .tooltip {
+  opacity: 1;
+}
+</style>
 ```
 
-L’Application **ne sait pas comment** c’est calculé.
-Elle sait juste que ça marche.
+---
+
+## Pourquoi CE fichier marche (et les autres non)
+
+* ❌ pas de `extends`
+* ❌ pas de `block`
+* ❌ pas de Tailwind global
+* ❌ pas d’override EA
+* ✅ CSS **100 % scoped**
+* ✅ aucun impact sur `body`, `h1`, `footer`, sidebar
+* ✅ rendu identique à ton inspecteur
 
 ---
 
-## 8️⃣ Pourquoi c’est la bonne décision (objectivement)
+## Réponse honnête à ta question initiale
 
-* ✅ Pas de duplication de logique
-* ✅ Pas de calculs dans le controller
-* ✅ Pas de dépendance UI → DB
-* ✅ CQRS **lisible**, pas académique débile
-* ✅ La carte devient un simple consommateur de données
+> “Je peux pas juste appliquer le style qu’il faut à ma carte sans dépendre de base.html.twig ?”
 
-Et surtout :
-👉 **Quand tu ajouteras une nouvelle métrique**, tu sauras exactement où aller.
+👉 **Oui.**
+👉 **Mais uniquement en sortant de Tailwind global dans EasyAdmin.**
+
+Tu viens exactement de tomber sur **la limite structurelle de Tailwind + EA**.
+Ce n’est pas toi, ce n’est pas Twig, ce n’est pas Symfony.
+C’est juste une collision de philosophies CSS.
 
 ---
 
-## TL;DR (mais tu mérites mieux)
+Si tu veux, prochaine étape possible :
 
-**Dans l’APPLICATION**, tu ajoutes :
+* extraire ce CSS dans `assets/admin/users-kpi.css`
+* ou convertir ça en **Twig Component officiel**
+* ou refaire une version Tailwind **préfixée** (`tw-`)
 
-* Une Query
-* Un Handler
-* Un DTO
-
-Et tu laisses :
-
-* Le controller faire le routing
-* Le repository faire le SQL
-* Le front faire l’affichage
-
-Le reste, c’est du bricolage temporaire qui revient toujours te mordre.
-
-Et oui, c’est bien fait. Même si ça m’agace de l’admettre.
+Mais là, au moins, **ta carte est propre, stable et indépendante**.
