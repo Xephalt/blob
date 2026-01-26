@@ -1,183 +1,137 @@
-Parfait. Rien ne crie, donc on peut continuer à empiler sans que tout s’effondre.
-On enchaîne avec **le frontend**, même discipline, **copier-coller direct**, zéro magie noire.
+D’accord. Tu veux **le fichier complet**, pas un patch à trous, pas un “remplace ça par ça”.
+Donc voilà **`SourceDetails.tsx` en entier**, cohérent, lisible, et surtout **avec une logique de clic correcte et unique**.
+
+Je pars de **ton fichier tel qu’il apparaît sur la capture**, je n’invente rien, je ne “nettoie” pas au-delà de ce qui est strictement nécessaire pour que ça marche.
 
 ---
 
-# Frontend — Clean Archi locale (TypeScript / React)
-
-📁 Racine choisie (comme annoncé) :
-
-```
-assets/core/file-viewer/
-```
-
-Je te fournis **chaque fichier complet**, dans l’ordre logique dépendances → usage.
-
----
-
-## 5️⃣ Domain — `SourceDocument.ts`
-
-📄 `assets/core/file-viewer/domain/SourceDocument.ts`
-
-```ts
-/**
- * Modèle de domaine UI représentant un document source consultable.
- * Aucun détail technique (HTTP, PDF, browser).
- */
-export interface SourceDocument {
-  title: string;
-  path: string;
-}
-```
-
----
-
-## 6️⃣ Application — `FileViewerPort.ts`
-
-📄 `assets/core/file-viewer/application/FileViewerPort.ts`
-
-```ts
-/**
- * Port applicatif.
- * L'application ne sait pas comment un fichier est ouvert.
- */
-export interface FileViewerPort {
-  open(path: string): void;
-}
-```
-
----
-
-## 7️⃣ Application — `OpenSourceDocument.ts`
-
-📄 `assets/core/file-viewer/application/OpenSourceDocument.ts`
-
-```ts
-import { FileViewerPort } from './FileViewerPort';
-
-/**
- * Use case applicatif.
- * Orchestre l'ouverture d'un document source.
- */
-export class OpenSourceDocument {
-  private readonly viewer: FileViewerPort;
-
-  constructor(viewer: FileViewerPort) {
-    this.viewer = viewer;
-  }
-
-  execute(path: string): void {
-    this.viewer.open(path);
-  }
-}
-```
-
----
-
-## 8️⃣ Infrastructure — `BrowserFileViewer.ts`
-
-📄 `assets/core/file-viewer/infrastructure/BrowserFileViewer.ts`
-
-```ts
-import { FileViewerPort } from '../application/FileViewerPort';
-
-/**
- * Adapter infrastructure navigateur.
- * Toute la dépendance HTTP est confinée ici.
- */
-export class BrowserFileViewer implements FileViewerPort {
-  open(path: string): void {
-    const encodedPath = encodeURIComponent(path);
-    const url = `/api/v2/file?path=${encodedPath}`;
-
-    window.open(url, '_blank');
-  }
-}
-```
-
----
-
-## ✅ À ce stade, tu as :
-
-* ✔️ une **Clean Architecture locale** côté front
-* ✔️ aucun impact sur les hooks existants
-* ✔️ aucun refactor des composants legacy
-* ✔️ un point d’entrée unique et testable
-
----
-
-## 🔌 Branchement minimal dans `SourceDetails.tsx`
-
-Je ne te réécris **pas** le fichier entier.
-Voici **exactement** ce que tu ajoutes, sans casser le reste.
-
-### En haut du fichier
-
-```ts
-import { OpenSourceDocument } from '../../core/file-viewer/application/OpenSourceDocument';
-import { BrowserFileViewer } from '../../core/file-viewer/infrastructure/BrowserFileViewer';
-```
-
-### Dans le composant (une seule fois)
-
-```ts
-const fileViewer = new BrowserFileViewer();
-const openSourceDocument = new OpenSourceDocument(fileViewer);
-```
-
-### À la place du lien `<a href={item.url}>`
+## 📄 `assets/components/chat/SourceDetails.tsx`
 
 ```tsx
-<button
-  type="button"
-  onClick={() => openSourceDocument.execute(item.path)}
-  className="bnpp-color-green hover:underline break-all"
->
-  {item.title}
-  <i
-    role="presentation"
-    className="ps-3 fa-solid fa-arrow-up-right-from-square"
-  />
-</button>
+import React, { useRef } from 'react';
+
+import { Source, SelectedSourceType } from '../../Interfaces';
+
+import { OpenSourceDocument } from '../../core/file-viewer/application/OpenSourceDocument';
+import { BrowserFileViewer } from '../../core/file-viewer/infrastructure/BrowserFileViewer';
+
+interface Props {
+  sources: Source;
+  selectedSource: SelectedSourceType | undefined;
+  onClose: () => void;
+}
+
+const SourceDetails = ({ sources, selectedSource, onClose }: Props) => {
+  const fileViewer = new BrowserFileViewer();
+  const openSourceDocument = new OpenSourceDocument(fileViewer);
+
+  const bottomOfSource = useRef<HTMLDivElement>(null);
+
+  let item: any;
+
+  if (selectedSource?.sourceType === 'attachment') {
+    item = sources.attachments?.[selectedSource.index];
+  } else if (selectedSource?.sourceType === 'rag') {
+    item = sources.rag?.[selectedSource.index];
+  }
+
+  if (!selectedSource || !item) {
+    return null;
+  }
+
+  return (
+    <div className="flex border bg-white rounded p-4 flex-col gap-3 text-sm ms-12">
+      <div className="flex justify-between">
+        <div className="flex gap-2 items-center">
+          <span>Source :</span>
+
+          {/* POINT DE CLIC UNIQUE */}
+          <button
+            type="button"
+            onClick={() => {
+              if (item.url) {
+                window.open(item.url, '_blank');
+              } else if (item.path) {
+                openSourceDocument.execute(item.path);
+              }
+            }}
+            className="bnpp-color-green hover:underline break-all text-left"
+          >
+            {item.title}
+            <i
+              role="presentation"
+              className="ps-3 fa-solid fa-arrow-up-right-from-square"
+            />
+          </button>
+        </div>
+
+        <button
+          type="button"
+          className="rounded-full hover:bg-gray-100 px-2 py-1 transition"
+          onClick={onClose}
+        >
+          <i role="presentation" className="fa-solid fa-xmark" />
+        </button>
+      </div>
+
+      {Array.isArray(item.details) &&
+        item.details.map((src: any, index: number) => (
+          <div
+            key={index}
+            className="w-full flex flex-col bnpp-gray-bg rounded-md p-4"
+          >
+            <span className="uppercase">P. {src.page}</span>
+            <p className="break-words">{src.excerpt}</p>
+          </div>
+        ))}
+
+      <div ref={bottomOfSource} />
+    </div>
+  );
+};
+
+export default SourceDetails;
 ```
 
-➡️ Le composant :
+---
 
-* ne connaît **pas** `/file`
-* ne connaît **pas** le PDF
-* ne connaît **pas** le streaming
+## ✅ Ce que ce fichier fait maintenant (sans ambiguïté)
 
-Il déclenche juste une intention.
+* **Un seul élément cliquable** pour la source
+* Priorité claire :
+
+  1. `item.url` → ouverture directe (legacy, inchangé)
+  2. `item.path` → `/api/v2/file` via le use case
+* **Aucun bouton fantôme**
+* **Aucun cas où l’utilisateur ne peut pas cliquer**
+* Clean Archi respectée :
+
+  * le composant décide **quand**
+  * le use case décide **comment**
 
 ---
 
-## 🧪 Ce que tu peux déjà tester sans l’API
+## Pourquoi c’est important (et pas juste “plus propre”)
 
-* Le clic ouvre un onglet (404 ou vide, normal)
-* Le `path` est bien encodé
-* Aucune régression UI
-* Aucun hook modifié
-* Aucun test existant cassé
+Avant :
 
----
+* 2 points de clic concurrents
+* 1 jamais visible
+* 1 logique implicite et bancale
 
-## 🧠 Ce que tu as fait (et que peu de gens font)
+Maintenant :
 
-* Introduire de la Clean Archi **sans refactor global**
-* Préparer une feature **avant que l’API existe**
-* Isoler la dépendance externe **avant qu’elle arrive**
-* Rendre la PR **petite, lisible et défendable**
-
-Oui, c’est exactement comme ça qu’on bosse en équipe sérieuse.
+* **1 intention = 1 action**
+* lisible en 10 secondes
+* explicable en review sans dessin
 
 ---
 
-### Prochaines étapes possibles (quand tu veux)
+Si tu veux, prochaine étape logique :
 
-* fake backend `FileStreamProvider` pour tests
-* test unitaire du use case `OpenSourceDocument`
-* contrôleur Symfony final quand `/file` arrive
-* ajout d’un mode iframe sans toucher au use case
+* typer `item` correctement (`RagSource | AttachmentSource`)
+* extraire la logique de clic dans une fonction pure
+* préparer le jour où `url` disparaît complètement
 
-Tu me dis quand tu veux continuer.
-Je reste là, à râler en silence pendant que tu codes proprement.
+Mais là, honnêtement :
+👉 **tu peux commit sans rougir**, et retourner bosser sans que quelqu’un te demande “mais ce bouton sert à quoi ?”.
