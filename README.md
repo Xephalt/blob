@@ -1,222 +1,193 @@
-OK. Là on va arrêter de tourner autour du pot et **poser un diagnostic clair**, parce que tu as raison sur un point fondamental : **ce n’est plus un problème d’encodage seulement**. Et oui, **le contrôleur est incomplet par rapport à votre infra réelle**.
+Oui. Bonne demande. Là on fige une **version cohérente et isolée**, alignée avec **ce que ton infra fait vraiment** (endpoint dynamique + API externe), sans mélange ni dette cachée.
 
-Je vais faire ça proprement, en trois parties :
+Je vais te donner **UNIQUEMENT** :
 
-1. **Pourquoi ton encodage “correct” continue de donner des 404**
-2. **Ce qui manque réellement dans ton contrôleur (le vrai bug)**
-3. **La version corrigée du contrôleur + règles d’encodage définitives**
+1. 🔧 le **Fake provider** mis à jour
+2. 🌐 le **Vrai provider API** mis à jour
+3. 📐 le **contrat (interface) final** sur lequel les deux s’alignent
 
-Respire, c’est logique.
-
----
-
-## 1️⃣ Diagnostic réel (et il est important)
-
-Tu observes :
-
-* même avec un `path` base64-url-safe
-* même copié-collé depuis Swagger
-* même avec une clé API valide
-
-👉 **toujours un `404 Not Found` renvoyé par l’API distante**
-
-Et le message clé est ici :
-
-> `Failed to retrieve file: 401/404 Not Found for url https://.../rag-api-dev/.../file?path=...`
-
-### 🔴 Indice critique
-
-Dans ton **exemple fonctionnel existant** (`DownloadController`), tu ne tapes **jamais directement** une URL fixe.
-
-Tu fais ceci :
-
-1. Tu appelles un **EndpointRepository**
-2. Il te retourne **l’URL dynamique active**
-3. Tu concatènes ensuite le *vrai endpoint métier*
-
-👉 **Ce mécanisme n’existe pas du tout dans ton `FileViewerController` actuel.**
-
-Donc aujourd’hui tu fais :
-
-```
-https://…/rag-api-dev/.../file?path=XXX
-```
-
-Alors que tu devrais faire :
-
-```
-[getFinalRedirectedEndpoint()] + '/file?path=XXX'
-```
-
-➡️ **L’API que tu appelles n’est pas la bonne instance.**
-➡️ **Le 404 est normal**, même avec un encodage parfait.
-
-Ce n’est PAS :
-
-* un bug Symfony
-* un bug base64
-* un bug front
-
-C’est **un bug d’orchestration backend**.
+Le tout **copiable-collable**, **cohérent**, **sans ambiguïté**.
 
 ---
 
-## 2️⃣ Conclusion intermédiaire (importante)
+# 🧩 0. Contrat final (PORT – référence unique)
 
-> ❌ Le problème n’est PAS “comment encoder le path”
->
-> ✅ Le problème est “où est-ce qu’on envoie la requête”
-
-L’encodage **sera nécessaire**, mais **il n’est pas la cause actuelle du 404**.
-
----
-
-## 3️⃣ Ce que le contrôleur DOIT faire (aligné avec votre existant)
-
-Ton propre `DownloadController` montre la voie :
-
-```php
-$baseUrl = $this->endpointRepository->getFinalRedirectedEndpoint();
-$url = $baseUrl . '/vector_store_report';
-```
-
-👉 **Le FileViewerController doit faire exactement la même chose.**
-
----
-
-## 4️⃣ Contrôleur corrigé (version PROPRE et alignée)
-
-Voici **la version corrigée** de ton `FileViewerController`, adaptée à ton infra réelle.
-
-### 📄 `src/Controller/Api/FileViewerController.php`
+📄 `src/Application/FileViewer/Port/FileStreamProvider.php`
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace App\Controller\Api;
+namespace App\Application\FileViewer\Port;
 
-use App\Application\FileViewer\OpenFileHandler;
-use App\Application\FileViewer\OpenFileQuery;
-use App\Repository\EndpointRepository;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\StreamedResponse;
-use Symfony\Component\Routing\Annotation\Route;
-
-final class FileViewerController extends AbstractController
+interface FileStreamProvider
 {
-    public function __construct(
-        private EndpointRepository $endpointRepository,
-    ) {}
+    /**
+     * @param string $baseUrl      URL de base de l’API distante (résolue par EndpointRepository)
+     * @param string $encodedPath  Path encodé en base64-url-safe (fourni par le frontend)
+     */
+    public function stream(string $baseUrl, string $encodedPath): iterable;
+}
+```
 
-    #[Route('/api/v2/file', name: 'api_v2_file_view', methods: ['GET'])]
-    public function __invoke(
-        Request $request,
-        OpenFileHandler $handler
-    ): StreamedResponse {
-        $encodedPath = (string) $request->query->get('path');
+👉 **Ceci est la vérité**.
+Tout le reste s’aligne là-dessus.
 
-        if ($encodedPath === '') {
-            throw $this->createNotFoundException('Missing file path');
+---
+
+# 🧪 1. Fake provider (LOCAL, DEV, TEST)
+
+📄 `src/Infrastructure/FileViewer/FakePdfStreamProvider.php`
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Infrastructure\FileViewer;
+
+use App\Application\FileViewer\Port\FileStreamProvider;
+
+final class FakePdfStreamProvider implements FileStreamProvider
+{
+    private const CHUNK_SIZE = 8192;
+
+    public function stream(string $baseUrl, string $encodedPath): iterable
+    {
+        // Fake = on ignore totalement baseUrl et encodedPath
+        $filePath = __DIR__ . '/../../../tests/Fixtures/sample.pdf';
+
+        if (!is_readable($filePath)) {
+            throw new \RuntimeException('Fake PDF file not found');
         }
 
-        // Résolution dynamique de l’endpoint (CRUCIAL)
-        $baseUrl = $this->endpointRepository->getFinalRedirectedEndpoint();
+        $handle = fopen($filePath, 'rb');
 
-        // On passe le path tel quel (déjà encodé côté front)
-        $query = new OpenFileQuery(
-            $baseUrl . '/file',
-            $encodedPath
-        );
+        if ($handle === false) {
+            throw new \RuntimeException('Unable to open fake PDF file');
+        }
 
-        $stream = $handler->handle($query);
-
-        return new StreamedResponse(
-            function () use ($stream) {
-                foreach ($stream as $chunk) {
-                    echo $chunk;
-                    flush();
-                }
-            },
-            200,
-            [
-                'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'inline; filename="source.pdf"',
-            ]
-        );
+        try {
+            while (!feof($handle)) {
+                yield fread($handle, self::CHUNK_SIZE);
+            }
+        } finally {
+            fclose($handle);
+        }
     }
 }
 ```
 
-> ⚠️ Oui, ça implique que `OpenFileQuery` prenne maintenant **l’URL cible + le path**
-> C’est **normal**, tu passes d’un fake local à une vraie API distribuée.
+### ✔️ Ce que garantit ce fake
+
+* même signature que le vrai provider
+* aucune dépendance réseau
+* aucun effet de bord
+* jetable sans refactor
 
 ---
 
-## 5️⃣ Provider réel : petite correction conceptuelle
+# 🌐 2. Provider API réel (PROD / INT)
 
-Ton provider **doit appeler une URL déjà résolue**, pas la construire lui-même.
-
-### Interface attendue (concept)
+📄 `src/Infrastructure/FileViewer/ApiPdfStreamProvider.php`
 
 ```php
-interface FileStreamProvider
+<?php
+
+declare(strict_types=1);
+
+namespace App\Infrastructure\FileViewer;
+
+use App\Application\FileViewer\Port\FileStreamProvider;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
+
+final class ApiPdfStreamProvider implements FileStreamProvider
 {
-    public function stream(string $url, string $encodedPath): iterable;
+    public function __construct(
+        private HttpClientInterface $httpClient,
+        private string $apiKey
+    ) {
+    }
+
+    public function stream(string $baseUrl, string $encodedPath): iterable
+    {
+        $url = rtrim($baseUrl, '/') . '/file';
+
+        $response = $this->httpClient->request('GET', $url, [
+            'query' => [
+                'path' => $encodedPath,
+            ],
+            'headers' => [
+                'Accept' => 'application/pdf',
+                'CommsGPT-Main-API-Key' => $this->apiKey,
+            ],
+            'buffer' => false, // streaming réel
+        ]);
+
+        if ($response->getStatusCode() !== 200) {
+            throw new \RuntimeException(
+                sprintf('Failed to retrieve file: HTTP %d', $response->getStatusCode())
+            );
+        }
+
+        foreach ($this->httpClient->stream($response) as $chunk) {
+            if ($chunk->isTimeout()) {
+                continue;
+            }
+
+            yield $chunk->getContent();
+        }
+    }
 }
 ```
 
-➡️ Le provider **ne connaît pas EndpointRepository**
-➡️ Le contrôleur orchestre
-➡️ L’Application décide
-➡️ L’Infra exécute
+### ✔️ Points importants (et corrigés)
+
+* ❌ **aucune construction d’URL dynamique ici**
+* ❌ **aucune logique EndpointRepository ici**
+* ✅ l’URL de base est **injectée par l’orchestrateur**
+* ✅ le `path` est **déjà encodé**, jamais modifié
+* ✅ streaming natif Symfony HttpClient
 
 ---
 
-## 6️⃣ Et l’encodage, alors ? (règle finale)
+# 🧠 3. Pourquoi cette version est la bonne (résumé rapide)
 
-### ✅ Règle définitive
+* Le **contrôleur** :
 
-* **Frontend** :
+  * résout l’endpoint dynamique
+  * orchestre le use case
+* Le **use case / handler** :
 
-  * encode en **base64-url-safe**
-* **Symfony** :
+  * ne connaît que le port
+* Le **provider** :
 
-  * ne touche PAS au path
-* **API distante** :
+  * exécute un détail technique (IO / HTTP)
+* Le **frontend** :
 
-  * décode base64-url-safe
+  * encode le path correctement (base64-url-safe)
 
-Si le Swagger dit :
-
-> `Encoded path (base64-url-safe)`
-
-👉 **Tu fais exactement ça**, et tu es bon.
-
-### ❌ Ce que tu ne dois plus tester
-
-* copier-coller un path brut dans Swagger
-* tester sans passer par la bonne instance d’API
-* changer l’encodage tant que l’URL est fausse
+👉 Chacun fait **exactement son job**.
+👉 Rien n’est codé au mauvais endroit.
 
 ---
 
-## 7️⃣ Résumé brutal (mais juste)
+# ✅ 4. Tu es maintenant “ISO” comme tu dis
 
-* ❌ Tu appelais la mauvaise API → 404 normal
-* ❌ L’encodage n’était PAS le vrai problème
-* ✅ Il faut résoudre l’endpoint dynamiquement
-* ✅ Ton exemple existant était la clé
-* ✅ Une fois corrigé, ton base64-url-safe sera accepté
+Avec cette base :
 
-Tu as eu le bon instinct **depuis le début**, mais il manquait **une pièce d’infra**, pas une transformation de string.
+* fake ↔ api sont interchangeables
+* l’erreur 404 n’est plus ambiguë
+* l’encodage est **contractuellement clair**
+* tu peux tester, brancher, switcher
 
-Si tu veux, prochaine étape possible :
+Si tu veux, prochaine étape logique (au choix) :
 
-* adapter `OpenFileHandler` proprement
-* sécuriser le flux
-* écrire un test d’intégration avec un endpoint mocké
+* 🔁 adapter `OpenFileHandler` proprement (si pas déjà fait)
+* 🧪 écrire un test d’intégration minimal
+* 🔐 ajouter une validation base64 côté backend
+* 🧹 cleanup avant PR
 
-Mais là, on a identifié **le vrai bug**, et ce n’était pas toi.
+Mais **ce que tu demandais ici est fait** :
+👉 fake + réel **propres, alignés, et isolés**.
