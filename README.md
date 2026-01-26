@@ -1,217 +1,321 @@
-Oui. Normal. Et ce n’est **pas** parce que “le code est faux”, c’est parce que **le rendu que tu veux dépend encore de règles implicites que tu n’as pas recopiées**.
+Parfait. Là on n’est plus dans le gloubiboulga, on est dans du **refactoring sous contrainte réelle**. Et oui, tu as raison sur un point clé :
+👉 **tu ne veux pas “nettoyer le monde”**, tu veux **ajouter une feature propre sans casser le reste**. C’est exactement comme ça qu’on introduit de la Clean Archi dans un projet vivant. Pas autrement.
 
-On va remettre les choses à plat calmement, sinon tu vas continuer à avoir l’impression que tout te glisse entre les doigts.
+Je vais donc faire trois choses, dans l’ordre logique d’un humain fatigué mais compétent :
 
----
+1. **Diagnostiquer honnêtement l’état actuel de ton projet** (front + back)
+2. **Définir une cible Clean Architecture réaliste**, compatible avec l’existant
+3. **Te dire exactement où créer quoi**, fichier par fichier, sans déplacer le legacy
 
-## Pourquoi “le rendu n’a rien à voir” (factuel, pas philosophique)
-
-Le rendu que tu montres sur la capture “qui est bien” repose sur **4 choses cachées** :
-
-1. **Un container parent EA**
-
-   * padding horizontal
-   * fond gris clair
-   * border-radius global
-   * shadow douce déjà posée
-
-2. **Des styles globaux EA sur les titres**
-
-   * `h2`, `h3` ont déjà des margins, line-height, font-family
-   * toi tu as remis des tailles “neutres”
-
-3. **Une largeur contrainte**
-
-   * ta carte n’est PAS full-width
-   * elle est dans un wrapper EA avec max-width + spacing
-
-4. **Des couleurs héritées**
-
-   * le vert n’est pas un simple `#00875a`
-   * le rouge est un token EA (pas un rouge brut)
-
-👉 Donc quand tu fais une carte **100 % autonome**, elle est visuellement correcte… mais **elle n’est plus “habillée” par EA**.
-C’est exactement ce que tu observes.
+Zéro dogme, zéro big-bang, zéro “on réécrit tout”.
 
 ---
 
-## Ce qu’on va faire maintenant (la bonne approche)
+## 1️⃣ Diagnostic réaliste de ton projet
 
-👉 **On ne revient PAS à Tailwind global**
-👉 **On ne dépend PAS de `base.html.twig`**
-👉 **On aligne visuellement la carte sur EasyAdmin**
+### Backend (Symfony)
+
+* `src/Controller/*` = **MVC classique**, très couplé, mais fonctionnel
+* `src/Application/` = **embryon de Clean Archi**, déjà une excellente porte d’entrée
+* Le domaine est **anémique** (Entities Doctrine), mais on s’en fout pour cette feature
+* Tu **ne maîtrises pas** l’endpoint `/api/v2/file` (API externe) → très bien, ça force un bon découplage
+
+👉 Conclusion backend
+Tu peux **ajouter une vraie couche Application propre**, sans toucher aux contrôleurs existants, **en façade**.
+
+---
+
+### Frontend (React)
+
+* Architecture **feature-oriented**, pas clean archi formelle
+* Beaucoup de logique HTTP dans les hooks (`useGetMessages`, etc.)
+* Les composants (`SourceDetails.tsx`) font déjà trop de choses, mais on ne va pas les réécrire
+
+👉 Conclusion frontend
+On va **introduire une micro-clean-archi locale**, limitée à la feature “ouvrir une source PDF”.
+
+---
+
+## 2️⃣ Principe directeur (important)
+
+> **On ne déplace rien. On n’efface rien.
+> On ajoute une feature propre, isolée, branchée au dernier moment.**
 
 Donc :
 
-* CSS scoped
-* MAIS **tokens visuels proches de EA**
-* ET structure identique à ce que tu as inspecté
+* ❌ Pas de refactor massif
+* ❌ Pas de renommage global
+* ❌ Pas de réorganisation de dossiers existants
+* ✅ Ajout de nouveaux dossiers
+* ✅ Injection par les bords
 
 ---
 
-## Version corrigée – rendu proche de ta capture
+## 3️⃣ Découpage CIBLE – Vue d’ensemble
 
-### ✅ `users_kpi_card.html.twig` (HTML quasi inchangé)
+### Backend (Symfony)
 
-```twig
-<div class="users-kpi" data-controller="users-kpi">
-  <h2 class="users-kpi__title">Utilisateurs</h2>
+```
+src/
+ └── Application/
+     └── FileViewer/
+         ├── OpenFileQuery.php
+         ├── OpenFileHandler.php
+         ├── Port/
+         │    └── FileStreamProvider.php
+         └── Dto/
+              └── FileDescriptor.php
+```
 
-  <div class="users-kpi__card">
-    <div class="users-kpi__grid">
+👉 **Aucun contrôleur Symfony ici**
+👉 **Aucune dépendance HTTP ici**
 
-      <div class="users-kpi__item">
-        <div class="users-kpi__item-title">
-          Enregistrés
-          {% include 'components/info_tooltip.html.twig' with {
-            text: "Nombre d'utilisateurs inscrits sur la plateforme pendant la période sélectionnée.",
-            class: 'users-kpi__tooltip'
-          } %}
-        </div>
+Le contrôleur Symfony futur fera juste :
 
-        <div class="users-kpi__value users-kpi__value--positive"
-             data-users-kpi-target="registeredCount"></div>
-
-        <div class="users-kpi__percent users-kpi__percent--negative"
-             data-users-kpi-target="registeredPercent"></div>
-      </div>
-
-      <div class="users-kpi__item">
-        <div class="users-kpi__item-title">
-          Actifs
-          {% include 'components/info_tooltip.html.twig' with {
-            text: "Nombre d'utilisateurs ayant envoyé au moins un message pendant la période sélectionnée.",
-            class: 'users-kpi__tooltip'
-          } %}
-        </div>
-
-        <div class="users-kpi__value users-kpi__value--positive"
-             data-users-kpi-target="activeCount"></div>
-
-        <div class="users-kpi__percent users-kpi__percent--negative"
-             data-users-kpi-target="activePercent"></div>
-      </div>
-
-    </div>
-  </div>
-</div>
+```
+HTTP → Application → Infra
 ```
 
 ---
 
-## ✅ CSS ajusté pour matcher EasyAdmin (important)
+### Frontend (React)
 
-```html
-<style>
-/* === Container === */
-.users-kpi {
-  margin-top: 1rem;
-}
+```
+assets/
+ └── core/
+     └── file-viewer/
+         ├── domain/
+         │    └── SourceDocument.ts
+         ├── application/
+         │    ├── OpenSourceDocument.ts
+         │    └── FileViewerPort.ts
+         └── infrastructure/
+              └── BrowserFileViewer.ts
+```
 
-.users-kpi__title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin-bottom: 0.75rem;
-  color: #1f2937;
-}
+Et ton code existant (`SourceDetails.tsx`) :
+👉 **appelle le use case**, point.
 
-/* === Card === */
-.users-kpi__card {
-  background: #f9fafb; /* gris EA */
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-}
+---
 
-/* === Grid === */
-.users-kpi__grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 2rem;
-  text-align: center;
-}
+## 4️⃣ Backend – Où placer quoi exactement
 
-/* === Items === */
-.users-kpi__item-title {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #374151;
-  margin-bottom: 0.5rem;
-}
+### 📁 `src/Application/FileViewer/`
 
-/* === Values === */
-.users-kpi__value {
-  font-size: 3rem;
-  font-weight: 700;
-  line-height: 1;
-  margin-bottom: 0.25rem;
-}
+Pourquoi ici ?
 
-.users-kpi__value--positive {
-  color: #065f46; /* vert EA */
-}
+* Tu as déjà `Application/Admin`
+* `FileViewer` est **un cas transverse**, pas admin
+* On respecte ton intention initiale
 
-/* === Percent === */
-.users-kpi__percent {
-  font-size: 0.875rem;
-  font-weight: 600;
-}
+---
 
-.users-kpi__percent--negative {
-  color: #b91c1c; /* rouge EA */
-}
+### `OpenFileQuery.php`
 
-/* === Tooltip === */
-.users-kpi__tooltip .tooltip {
-  opacity: 0;
-  transition: opacity 0.15s ease-in-out;
+```php
+final class OpenFileQuery
+{
+    public function __construct(
+        public readonly string $path
+    ) {}
 }
+```
 
-.users-kpi__tooltip:hover .tooltip,
-.users-kpi__tooltip:focus-within .tooltip {
-  opacity: 1;
+➡️ Représente **l’intention métier**
+➡️ Aucun HTTP, aucun Symfony
+
+---
+
+### `FileStreamProvider.php` (PORT)
+
+```php
+interface FileStreamProvider
+{
+    public function stream(string $path): iterable;
 }
-</style>
+```
+
+➡️ L’API externe implémentera ça plus tard
+➡️ Pour l’instant : mockable / fakeable
+
+---
+
+### `OpenFileHandler.php`
+
+```php
+final class OpenFileHandler
+{
+    public function __construct(
+        private FileStreamProvider $provider
+    ) {}
+
+    public function handle(OpenFileQuery $query): iterable
+    {
+        return $this->provider->stream($query->path);
+    }
+}
+```
+
+➡️ Le handler **ne sait rien** de PDF, HTTP ou Symfony
+➡️ Il orchestre, c’est tout
+
+---
+
+### Quand l’endpoint `/file` arrivera
+
+Tu ajouteras **un contrôleur Symfony très fin** :
+
+```
+Controller → Query → Handler → Provider → Response(stream)
+```
+
+Sans toucher à l’application.
+
+---
+
+## 5️⃣ Frontend – Clean Archi locale, sans douleur
+
+### Problème actuel
+
+Dans `SourceDetails.tsx`, tu as ça :
+
+```tsx
+<a href={item.url} target="_blank">
+```
+
+C’est :
+
+* du HTTP
+* du métier
+* du UI
+* tout mélangé
+
+On **ne supprime pas**, on **dévie**.
+
+---
+
+## 6️⃣ Nouveau code Frontend (à ajouter)
+
+### 📁 `assets/core/file-viewer/domain/SourceDocument.ts`
+
+```ts
+export interface SourceDocument {
+  title: string;
+  path: string;
+}
 ```
 
 ---
 
-## Ce que tu dois comprendre (et retenir)
+### 📁 `application/FileViewerPort.ts`
 
-* ❌ Le rendu “EA” n’est PAS neutre
-* ❌ Tu ne peux pas l’avoir “gratuitement” sans importer ses styles
-* ✅ Mais tu peux **t’en approcher visuellement sans dépendance**
-* ✅ C’est ce qu’on vient de faire
-
-Tu as maintenant :
-
-* une carte **stable**
-* qui **ne casse rien**
-* qui **ressemble à l’admin**
-* et que tu peux déplacer ailleurs sans surprise
+```ts
+export interface FileViewerPort {
+  open(path: string): void;
+}
+```
 
 ---
 
-## Dernière vérité (sans fioritures)
+### 📁 `application/OpenSourceDocument.ts`
 
-Tu étais bloqué parce que tu pensais que :
+```ts
+export class OpenSourceDocument {
+  constructor(private viewer: FileViewerPort) {}
 
-> “le style vient du base”
+  execute(path: string) {
+    this.viewer.open(path);
+  }
+}
+```
 
-Alors qu’en réalité :
+---
 
-> **le style vient d’un écosystème CSS implicite**
+### 📁 `infrastructure/BrowserFileViewer.ts`
 
-Une fois que tu l’acceptes, tout devient plus simple.
+```ts
+export class BrowserFileViewer implements FileViewerPort {
+  open(path: string) {
+    const encoded = encodeURIComponent(path);
+    window.open(`/api/v2/file?path=${encoded}`, '_blank');
+  }
+}
+```
 
-Si tu veux, prochaine étape possible :
+➡️ Toute la merde HTTP est **ici**, confinée, assumée
 
-* harmoniser TOUTES les KPI cards avec ce mini-design system
-* ou factoriser le CSS dans `assets/admin/kpi.css`
-* ou refaire le tooltip sans inline `<style>`
+---
 
-Mais là, **on est enfin au bon niveau de compréhension**.
+## 7️⃣ Branchement MINIMAL dans `SourceDetails.tsx`
+
+Tu **ne refactors pas** le composant. Tu ajoutes juste :
+
+```ts
+const fileViewer = new BrowserFileViewer();
+const openSourceDocument = new OpenSourceDocument(fileViewer);
+```
+
+Et tu remplaces le lien :
+
+```tsx
+<button
+  onClick={() => openSourceDocument.execute(item.path)}
+  className="bnpp-color-green hover:underline"
+>
+  {item.title}
+</button>
+```
+
+➡️ Le composant **ne sait pas** :
+
+* ce qu’est `/file`
+* ce qu’est un PDF
+* ce qu’est un stream
+
+---
+
+## 8️⃣ Ce que tu peux faire MAINTENANT (sans l’API)
+
+✔️ Créer toute l’arborescence
+✔️ Écrire tous les use cases
+✔️ Mettre un fake `BrowserFileViewer` qui log
+✔️ Adapter l’UI pour utiliser `path`
+✔️ Préparer le handler backend
+
+Quand l’endpoint arrive :
+👉 **tu branches, point**
+
+---
+
+## 9️⃣ Règles que je te propose (et que tu peux refuser)
+
+Je te demande juste validation sur ces points :
+
+1. Le `path` est **opaque et non typé**
+2. L’ouverture se fait **toujours via le navigateur**
+3. Pas d’iframe interne pour l’instant
+4. Pas de preview page par page
+5. Pas de téléchargement forcé
+
+Si un de ces points est faux, dis-le maintenant. Sinon, cette archi est **safe pour le taf**, défendable en review, et extensible.
+
+---
+
+## Conclusion honnête
+
+Tu fais exactement ce qu’un bon dev fait en entreprise :
+
+* tu respectes l’existant
+* tu ajoutes proprement
+* tu prépares l’avenir sans le forcer
+
+Ce n’est pas “pas clean archi”.
+C’est **la seule clean archi qui marche en vrai**.
+
+Si tu veux, au prochain message, on peut :
+
+* écrire le **fake provider backend**
+* écrire un **test minimal du use case frontend**
+* préparer le **commit plan** pour que ça passe crème en PR
+
+Et non, tu n’es pas en retard. Tu fais juste les choses dans le bon ordre.
