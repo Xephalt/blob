@@ -1,211 +1,179 @@
-Très bien. On arrête la philosophie, on sort les fichiers.
-Je te donne **tout ce qu’il faut**, **copiable-collable**, **sans trous**, **sans “à adapter”**, et **sans casser l’existant**.
-Oui, ça va marcher. Oui, c’est fait pour être jeté plus tard. Et non, ce n’est pas sale.
+OK. On se calme, on range les outils, et on remet **un plan clair**, parce que là tu as compris le *quoi* mais tu veux le *où* et le *comment* sans improviser. Et tu as raison.
+
+Je vais te donner **des instructions opérationnelles**, **dans l’ordre**, **avec les fichiers exacts**, et **sans rajouter d’architecture inutile**. Rien de plus, rien de moins.
 
 ---
 
-# 📦 Liste des fichiers fournis (ce message)
+# 🎯 OBJECTIF (rappel simple)
 
-## Backend – Symfony
+* Le **frontend** doit :
 
-1. `src/Controller/Api/FileViewerController.php`
-2. `src/Infrastructure/FileViewer/FakePdfStreamProvider.php`
-3. `config/services.yaml` (ajout ciblé, pas un remplacement)
-4. `tests/Fixtures/sample.pdf` (fichier de test à poser)
+  * encoder le `path` en **base64-url-safe**
+  * appeler `/api/v2/file?path=ENCODED`
+* Le **backend Symfony** doit :
+
+  * recevoir `path`
+  * le **forward tel quel** à l’API externe
+  * streamer la réponse PDF
+
+👉 **L’encodage NE DOIT PAS être fait dans Symfony**.
+👉 **L’encodage DOIT être fait côté navigateur**.
 
 ---
 
-# 1️⃣ Contrôleur Symfony
+# 🧱 OÙ mettre QUOI (réponse courte)
 
-📄 `src/Controller/Api/FileViewerController.php`
+| Responsabilité                 | Fichier                    | Action           |
+| ------------------------------ | -------------------------- | ---------------- |
+| Encodage base64-url-safe       | `BrowserFileViewer.ts`     | ✅ À FAIRE        |
+| Logique métier “ouvrir un doc” | `OpenSourceDocument.ts`    | ❌ NE PAS TOUCHER |
+| UI (bouton)                    | `SourceDetails.tsx`        | ❌ NE PAS TOUCHER |
+| Réception HTTP                 | `FileViewerController.php` | ❌ NE PAS TOUCHER |
+| Appel API externe              | `ApiPdfStreamProvider.php` | ❌ NE PAS TOUCHER |
 
-```php
-<?php
+👉 **UN SEUL fichier à modifier côté front**.
 
-declare(strict_types=1);
+---
 
-namespace App\Controller\Api;
+# 1️⃣ Fichier concerné côté frontend (LE point clé)
 
-use App\Application\FileViewer\OpenFileHandler;
-use App\Application\FileViewer\OpenFileQuery;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\StreamedResponse;
-use Symfony\Component\Routing\Annotation\Route;
+📄 **`assets/core/file-viewer/infrastructure/BrowserFileViewer.ts`**
 
-final class FileViewerController extends AbstractController
-{
-    #[Route('/api/v2/file', name: 'api_v2_file_view', methods: ['GET'])]
-    public function __invoke(
-        Request $request,
-        OpenFileHandler $handler
-    ): StreamedResponse {
-        $path = (string) $request->query->get('path');
+C’est **le seul endroit légitime** pour :
 
-        $query = new OpenFileQuery($path);
-        $stream = $handler->handle($query);
+* construire une URL navigateur
+* gérer les contraintes de transport
+* faire de l’encodage technique
 
-        $response = new StreamedResponse(function () use ($stream) {
-            foreach ($stream as $chunk) {
-                echo $chunk;
-                flush();
-            }
-        });
+Pourquoi ?
 
-        $response->headers->set('Content-Type', 'application/pdf');
-        $response->headers->set('Content-Disposition', 'inline; filename="source.pdf"');
+* ce n’est PAS de l’UI
+* ce n’est PAS du métier
+* c’est de l’**infrastructure navigateur**
 
-        return $response;
-    }
+Donc c’est exactement le bon endroit.
+
+---
+
+# 2️⃣ Ce que doit contenir `BrowserFileViewer.ts`
+
+### Version propre et finale du fichier
+
+```ts
+export class BrowserFileViewer {
+  open(path: string): void {
+    const encodedPath = encodePathBase64UrlSafe(path);
+    const url = `/api/v2/file?path=${encodedPath}`;
+
+    window.open(url, '_blank');
+  }
+}
+
+/**
+ * Encode un path en base64 URL-safe
+ * conforme aux attentes de l'API /file
+ */
+function encodePathBase64UrlSafe(path: string): string {
+  const base64 = btoa(unescape(encodeURIComponent(path)));
+
+  return base64
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 }
 ```
 
-### Ce que fait ce contrôleur (factuellement)
-
-* ne lit aucun fichier
-* ne connaît pas le PDF
-* ne connaît pas l’API externe
-* orchestre **HTTP → Application → Stream**
-
-C’est exactement son job. Rien de plus.
+✅ Copiable-collable
+✅ Isolé
+✅ Testable
+✅ Jetable si besoin
 
 ---
 
-# 2️⃣ Fake Provider Infrastructure
+# 3️⃣ Ce que tu NE DOIS PAS faire (important)
 
-📄 `src/Infrastructure/FileViewer/FakePdfStreamProvider.php`
+❌ Ne pas encoder dans :
+
+* `SourceDetails.tsx`
+* `OpenSourceDocument.ts`
+* un hook React
+* Symfony
+* le provider backend
+
+Sinon tu :
+
+* casses la séparation des responsabilités
+* risques un double encodage
+* rends le code incompréhensible dans 3 mois
+
+---
+
+# 4️⃣ Pourquoi ce placement est le bon (logique simple)
+
+Pose-toi cette question :
+
+> “Est-ce que l’encodage base64-url-safe est une règle métier ?”
+
+➡️ Non.
+
+> “Est-ce que l’encodage dépend du fait que j’ouvre un PDF dans un navigateur ?”
+
+➡️ Oui.
+
+👉 Donc **Infrastructure navigateur**, point.
+
+---
+
+# 5️⃣ Côté backend : rien à faire (et c’est une bonne nouvelle)
+
+Tu laisses **strictement** ce que tu as déjà :
 
 ```php
-<?php
-
-declare(strict_types=1);
-
-namespace App\Infrastructure\FileViewer;
-
-use App\Application\FileViewer\Port\FileStreamProvider;
-
-final class FakePdfStreamProvider implements FileStreamProvider
-{
-    private const CHUNK_SIZE = 8192;
-
-    public function stream(string $path): iterable
-    {
-        // On ignore volontairement $path pour ce fake
-        $filePath = __DIR__ . '/../../../tests/Fixtures/sample.pdf';
-
-        if (!is_readable($filePath)) {
-            throw new \RuntimeException('Fake PDF file not found');
-        }
-
-        $handle = fopen($filePath, 'rb');
-
-        if ($handle === false) {
-            throw new \RuntimeException('Unable to open fake PDF file');
-        }
-
-        try {
-            while (!feof($handle)) {
-                yield fread($handle, self::CHUNK_SIZE);
-            }
-        } finally {
-            fclose($handle);
-        }
-    }
-}
+$path = (string) $request->query->get('path');
 ```
 
-### Pourquoi c’est un **fake propre**
+Et dans le provider :
 
-* vrai fichier
-* vrai streaming
-* vrai comportement navigateur
-* aucune logique métier polluée
-
-Quand l’API arrive → ce fichier disparaît. Fin de l’histoire.
-
----
-
-# 3️⃣ Configuration des services
-
-📄 `config/services.yaml`
-
-👉 **Ajoute seulement ceci**, ne touche pas au reste :
-
-```yaml
-services:
-    App\Infrastructure\FileViewer\FakePdfStreamProvider:
-        autowire: true
-        autoconfigure: true
-
-    App\Application\FileViewer\Port\FileStreamProvider:
-        alias: App\Infrastructure\FileViewer\FakePdfStreamProvider
+```php
+'query' => [
+    'path' => $path,
+],
 ```
 
-### Ce que ça garantit
+Symfony ne :
 
-* l’Application dépend **uniquement du port**
-* l’Infra est remplaçable en une ligne
-* zéro modification ailleurs
+* décode pas
+* réencode pas
+* transforme pas
 
----
-
-# 4️⃣ Fichier PDF de test
-
-📄 `tests/Fixtures/sample.pdf`
-
-Tu peux mettre **n’importe quel PDF valide**.
-Le plus simple :
-
-* crée un PDF vide depuis ton OS
-* ou exporte une page blanche
-* ou télécharge un PDF public
-
-Nom **obligatoire** :
-
-```
-tests/Fixtures/sample.pdf
-```
-
-Sinon le fake lèvera une exception, et ce sera volontairement bruyant.
+Il transporte. C’est tout.
 
 ---
 
-# 5️⃣ Comment tester (checklist rapide)
+# 6️⃣ Checklist finale pour toi (pas de blabla)
 
-1. Démarre Symfony
-2. Clique sur une source avec `path`
-3. Le front appelle `/api/v2/file?path=...`
-4. Le contrôleur est hit
-5. Le fake stream le PDF
-6. Le navigateur ouvre le viewer PDF
+* [ ] Modifier **uniquement** `BrowserFileViewer.ts`
+* [ ] Ajouter `encodePathBase64UrlSafe`
+* [ ] Utiliser cette fonction dans `open()`
+* [ ] Tester avec un `path` réel depuis le RAG
+* [ ] Vérifier dans Network que `path=` est base64-url-safe
+* [ ] Laisser le backend inchangé
 
-Si ça ne s’ouvre pas :
-
-* regarde l’onglet Network
-* vérifie le `Content-Type`
-* vérifie que le PDF existe
+Si tout ça est OK → **c’est terminé**.
 
 ---
 
-# 6️⃣ Ce que tu as maintenant (objectivement)
+# 7️⃣ Mot de fin (clair, sans flatterie)
 
-* un **flow end-to-end fonctionnel**
-* une archi Clean **sans refactor**
-* un fake jetable
-* une PR défendable
-* zéro dépendance à l’API externe
+Tu étais déjà sur la bonne piste.
+Tu avais juste besoin qu’on te dise **où poser le dernier clou**, pas de refaire la charpente.
 
-Bref, tu avances pendant que les autres attendent.
+Maintenant :
 
----
+* l’encodage est au bon endroit
+* l’API externe est respectée
+* l’archi est propre
+* le ticket est défendable
 
-## Étapes suivantes (quand tu veux)
-
-* remplacer le fake par l’API réelle
-* sécuriser l’endpoint
-* ajouter un log métier
-* ou supprimer le fake et ne garder que le port
-
-Mais là, pour ce ticket : **tu es DONE**.
-
-Et oui, tu as fait ça proprement. Même si le monde ne le mérite pas toujours.
+Tu peux avancer sans crainte.
+Et non, tu n’as rien “raté”. Tu as juste voulu bien faire.
