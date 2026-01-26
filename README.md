@@ -1,179 +1,222 @@
-OK. On se calme, on range les outils, et on remet **un plan clair**, parce que là tu as compris le *quoi* mais tu veux le *où* et le *comment* sans improviser. Et tu as raison.
+OK. Là on va arrêter de tourner autour du pot et **poser un diagnostic clair**, parce que tu as raison sur un point fondamental : **ce n’est plus un problème d’encodage seulement**. Et oui, **le contrôleur est incomplet par rapport à votre infra réelle**.
 
-Je vais te donner **des instructions opérationnelles**, **dans l’ordre**, **avec les fichiers exacts**, et **sans rajouter d’architecture inutile**. Rien de plus, rien de moins.
+Je vais faire ça proprement, en trois parties :
 
----
+1. **Pourquoi ton encodage “correct” continue de donner des 404**
+2. **Ce qui manque réellement dans ton contrôleur (le vrai bug)**
+3. **La version corrigée du contrôleur + règles d’encodage définitives**
 
-# 🎯 OBJECTIF (rappel simple)
-
-* Le **frontend** doit :
-
-  * encoder le `path` en **base64-url-safe**
-  * appeler `/api/v2/file?path=ENCODED`
-* Le **backend Symfony** doit :
-
-  * recevoir `path`
-  * le **forward tel quel** à l’API externe
-  * streamer la réponse PDF
-
-👉 **L’encodage NE DOIT PAS être fait dans Symfony**.
-👉 **L’encodage DOIT être fait côté navigateur**.
+Respire, c’est logique.
 
 ---
 
-# 🧱 OÙ mettre QUOI (réponse courte)
+## 1️⃣ Diagnostic réel (et il est important)
 
-| Responsabilité                 | Fichier                    | Action           |
-| ------------------------------ | -------------------------- | ---------------- |
-| Encodage base64-url-safe       | `BrowserFileViewer.ts`     | ✅ À FAIRE        |
-| Logique métier “ouvrir un doc” | `OpenSourceDocument.ts`    | ❌ NE PAS TOUCHER |
-| UI (bouton)                    | `SourceDetails.tsx`        | ❌ NE PAS TOUCHER |
-| Réception HTTP                 | `FileViewerController.php` | ❌ NE PAS TOUCHER |
-| Appel API externe              | `ApiPdfStreamProvider.php` | ❌ NE PAS TOUCHER |
+Tu observes :
 
-👉 **UN SEUL fichier à modifier côté front**.
+* même avec un `path` base64-url-safe
+* même copié-collé depuis Swagger
+* même avec une clé API valide
 
----
+👉 **toujours un `404 Not Found` renvoyé par l’API distante**
 
-# 1️⃣ Fichier concerné côté frontend (LE point clé)
+Et le message clé est ici :
 
-📄 **`assets/core/file-viewer/infrastructure/BrowserFileViewer.ts`**
+> `Failed to retrieve file: 401/404 Not Found for url https://.../rag-api-dev/.../file?path=...`
 
-C’est **le seul endroit légitime** pour :
+### 🔴 Indice critique
 
-* construire une URL navigateur
-* gérer les contraintes de transport
-* faire de l’encodage technique
+Dans ton **exemple fonctionnel existant** (`DownloadController`), tu ne tapes **jamais directement** une URL fixe.
 
-Pourquoi ?
+Tu fais ceci :
 
-* ce n’est PAS de l’UI
-* ce n’est PAS du métier
-* c’est de l’**infrastructure navigateur**
+1. Tu appelles un **EndpointRepository**
+2. Il te retourne **l’URL dynamique active**
+3. Tu concatènes ensuite le *vrai endpoint métier*
 
-Donc c’est exactement le bon endroit.
+👉 **Ce mécanisme n’existe pas du tout dans ton `FileViewerController` actuel.**
 
----
+Donc aujourd’hui tu fais :
 
-# 2️⃣ Ce que doit contenir `BrowserFileViewer.ts`
-
-### Version propre et finale du fichier
-
-```ts
-export class BrowserFileViewer {
-  open(path: string): void {
-    const encodedPath = encodePathBase64UrlSafe(path);
-    const url = `/api/v2/file?path=${encodedPath}`;
-
-    window.open(url, '_blank');
-  }
-}
-
-/**
- * Encode un path en base64 URL-safe
- * conforme aux attentes de l'API /file
- */
-function encodePathBase64UrlSafe(path: string): string {
-  const base64 = btoa(unescape(encodeURIComponent(path)));
-
-  return base64
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
+```
+https://…/rag-api-dev/.../file?path=XXX
 ```
 
-✅ Copiable-collable
-✅ Isolé
-✅ Testable
-✅ Jetable si besoin
+Alors que tu devrais faire :
+
+```
+[getFinalRedirectedEndpoint()] + '/file?path=XXX'
+```
+
+➡️ **L’API que tu appelles n’est pas la bonne instance.**
+➡️ **Le 404 est normal**, même avec un encodage parfait.
+
+Ce n’est PAS :
+
+* un bug Symfony
+* un bug base64
+* un bug front
+
+C’est **un bug d’orchestration backend**.
 
 ---
 
-# 3️⃣ Ce que tu NE DOIS PAS faire (important)
+## 2️⃣ Conclusion intermédiaire (importante)
 
-❌ Ne pas encoder dans :
+> ❌ Le problème n’est PAS “comment encoder le path”
+>
+> ✅ Le problème est “où est-ce qu’on envoie la requête”
 
-* `SourceDetails.tsx`
-* `OpenSourceDocument.ts`
-* un hook React
-* Symfony
-* le provider backend
-
-Sinon tu :
-
-* casses la séparation des responsabilités
-* risques un double encodage
-* rends le code incompréhensible dans 3 mois
+L’encodage **sera nécessaire**, mais **il n’est pas la cause actuelle du 404**.
 
 ---
 
-# 4️⃣ Pourquoi ce placement est le bon (logique simple)
+## 3️⃣ Ce que le contrôleur DOIT faire (aligné avec votre existant)
 
-Pose-toi cette question :
-
-> “Est-ce que l’encodage base64-url-safe est une règle métier ?”
-
-➡️ Non.
-
-> “Est-ce que l’encodage dépend du fait que j’ouvre un PDF dans un navigateur ?”
-
-➡️ Oui.
-
-👉 Donc **Infrastructure navigateur**, point.
-
----
-
-# 5️⃣ Côté backend : rien à faire (et c’est une bonne nouvelle)
-
-Tu laisses **strictement** ce que tu as déjà :
+Ton propre `DownloadController` montre la voie :
 
 ```php
-$path = (string) $request->query->get('path');
+$baseUrl = $this->endpointRepository->getFinalRedirectedEndpoint();
+$url = $baseUrl . '/vector_store_report';
 ```
 
-Et dans le provider :
+👉 **Le FileViewerController doit faire exactement la même chose.**
+
+---
+
+## 4️⃣ Contrôleur corrigé (version PROPRE et alignée)
+
+Voici **la version corrigée** de ton `FileViewerController`, adaptée à ton infra réelle.
+
+### 📄 `src/Controller/Api/FileViewerController.php`
 
 ```php
-'query' => [
-    'path' => $path,
-],
+<?php
+
+declare(strict_types=1);
+
+namespace App\Controller\Api;
+
+use App\Application\FileViewer\OpenFileHandler;
+use App\Application\FileViewer\OpenFileQuery;
+use App\Repository\EndpointRepository;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\Routing\Annotation\Route;
+
+final class FileViewerController extends AbstractController
+{
+    public function __construct(
+        private EndpointRepository $endpointRepository,
+    ) {}
+
+    #[Route('/api/v2/file', name: 'api_v2_file_view', methods: ['GET'])]
+    public function __invoke(
+        Request $request,
+        OpenFileHandler $handler
+    ): StreamedResponse {
+        $encodedPath = (string) $request->query->get('path');
+
+        if ($encodedPath === '') {
+            throw $this->createNotFoundException('Missing file path');
+        }
+
+        // Résolution dynamique de l’endpoint (CRUCIAL)
+        $baseUrl = $this->endpointRepository->getFinalRedirectedEndpoint();
+
+        // On passe le path tel quel (déjà encodé côté front)
+        $query = new OpenFileQuery(
+            $baseUrl . '/file',
+            $encodedPath
+        );
+
+        $stream = $handler->handle($query);
+
+        return new StreamedResponse(
+            function () use ($stream) {
+                foreach ($stream as $chunk) {
+                    echo $chunk;
+                    flush();
+                }
+            },
+            200,
+            [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="source.pdf"',
+            ]
+        );
+    }
+}
 ```
 
-Symfony ne :
-
-* décode pas
-* réencode pas
-* transforme pas
-
-Il transporte. C’est tout.
+> ⚠️ Oui, ça implique que `OpenFileQuery` prenne maintenant **l’URL cible + le path**
+> C’est **normal**, tu passes d’un fake local à une vraie API distribuée.
 
 ---
 
-# 6️⃣ Checklist finale pour toi (pas de blabla)
+## 5️⃣ Provider réel : petite correction conceptuelle
 
-* [ ] Modifier **uniquement** `BrowserFileViewer.ts`
-* [ ] Ajouter `encodePathBase64UrlSafe`
-* [ ] Utiliser cette fonction dans `open()`
-* [ ] Tester avec un `path` réel depuis le RAG
-* [ ] Vérifier dans Network que `path=` est base64-url-safe
-* [ ] Laisser le backend inchangé
+Ton provider **doit appeler une URL déjà résolue**, pas la construire lui-même.
 
-Si tout ça est OK → **c’est terminé**.
+### Interface attendue (concept)
+
+```php
+interface FileStreamProvider
+{
+    public function stream(string $url, string $encodedPath): iterable;
+}
+```
+
+➡️ Le provider **ne connaît pas EndpointRepository**
+➡️ Le contrôleur orchestre
+➡️ L’Application décide
+➡️ L’Infra exécute
 
 ---
 
-# 7️⃣ Mot de fin (clair, sans flatterie)
+## 6️⃣ Et l’encodage, alors ? (règle finale)
 
-Tu étais déjà sur la bonne piste.
-Tu avais juste besoin qu’on te dise **où poser le dernier clou**, pas de refaire la charpente.
+### ✅ Règle définitive
 
-Maintenant :
+* **Frontend** :
 
-* l’encodage est au bon endroit
-* l’API externe est respectée
-* l’archi est propre
-* le ticket est défendable
+  * encode en **base64-url-safe**
+* **Symfony** :
 
-Tu peux avancer sans crainte.
-Et non, tu n’as rien “raté”. Tu as juste voulu bien faire.
+  * ne touche PAS au path
+* **API distante** :
+
+  * décode base64-url-safe
+
+Si le Swagger dit :
+
+> `Encoded path (base64-url-safe)`
+
+👉 **Tu fais exactement ça**, et tu es bon.
+
+### ❌ Ce que tu ne dois plus tester
+
+* copier-coller un path brut dans Swagger
+* tester sans passer par la bonne instance d’API
+* changer l’encodage tant que l’URL est fausse
+
+---
+
+## 7️⃣ Résumé brutal (mais juste)
+
+* ❌ Tu appelais la mauvaise API → 404 normal
+* ❌ L’encodage n’était PAS le vrai problème
+* ✅ Il faut résoudre l’endpoint dynamiquement
+* ✅ Ton exemple existant était la clé
+* ✅ Une fois corrigé, ton base64-url-safe sera accepté
+
+Tu as eu le bon instinct **depuis le début**, mais il manquait **une pièce d’infra**, pas une transformation de string.
+
+Si tu veux, prochaine étape possible :
+
+* adapter `OpenFileHandler` proprement
+* sécuriser le flux
+* écrire un test d’intégration avec un endpoint mocké
+
+Mais là, on a identifié **le vrai bug**, et ce n’était pas toi.
