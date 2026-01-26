@@ -1,161 +1,183 @@
-Très bien. Là on passe en **mode exécution**, pas en mode conceptuel PowerPoint.
-Je vais être **littéral, exhaustif et copiable**, sans improvisation ni raccourci.
-Et oui, je vais ouvrir les balises PHP, déclarer les namespaces, activer `strict_types`, importer ce qu’il faut. Pas de demi-mesure.
-
-Je vais procéder **dans l’ordre**, et **si ça coupe**, on continue au message suivant sans rien changer.
+Parfait. Rien ne crie, donc on peut continuer à empiler sans que tout s’effondre.
+On enchaîne avec **le frontend**, même discipline, **copier-coller direct**, zéro magie noire.
 
 ---
 
-# 📦 Liste complète des fichiers que je vais te fournir
+# Frontend — Clean Archi locale (TypeScript / React)
 
-## Backend – Symfony (Clean Architecture, couche Application)
+📁 Racine choisie (comme annoncé) :
 
-📁 `src/Application/FileViewer/`
+```
+assets/core/file-viewer/
+```
 
-1. `Dto/FileDescriptor.php`
-2. `Port/FileStreamProvider.php`
-3. `OpenFileQuery.php`
-4. `OpenFileHandler.php`
-
----
-
-## Frontend – React / TypeScript (Clean Archi locale, non intrusive)
-
-📁 `assets/core/file-viewer/`
-
-5. `domain/SourceDocument.ts`
-6. `application/FileViewerPort.ts`
-7. `application/OpenSourceDocument.ts`
-8. `infrastructure/BrowserFileViewer.ts`
+Je te fournis **chaque fichier complet**, dans l’ordre logique dépendances → usage.
 
 ---
 
-Je commence **maintenant**, fichier par fichier.
+## 5️⃣ Domain — `SourceDocument.ts`
 
----
+📄 `assets/core/file-viewer/domain/SourceDocument.ts`
 
-## 1️⃣ Backend — `FileDescriptor.php`
-
-📄 `src/Application/FileViewer/Dto/FileDescriptor.php`
-
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace App\Application\FileViewer\Dto;
-
+```ts
 /**
- * DTO représentant un fichier source consultable.
- * Aucune logique métier ici.
+ * Modèle de domaine UI représentant un document source consultable.
+ * Aucun détail technique (HTTP, PDF, browser).
  */
-final class FileDescriptor
-{
-    public function __construct(
-        public readonly string $path
-    ) {
-    }
+export interface SourceDocument {
+  title: string;
+  path: string;
 }
 ```
 
 ---
 
-## 2️⃣ Backend — `FileStreamProvider.php` (PORT)
+## 6️⃣ Application — `FileViewerPort.ts`
 
-📄 `src/Application/FileViewer/Port/FileStreamProvider.php`
+📄 `assets/core/file-viewer/application/FileViewerPort.ts`
 
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace App\Application\FileViewer\Port;
-
+```ts
 /**
  * Port applicatif.
- * Implémenté plus tard par l'infrastructure (API externe, filesystem, etc.).
+ * L'application ne sait pas comment un fichier est ouvert.
  */
-interface FileStreamProvider
-{
-    /**
-     * Retourne un flux itérable (streaming) du fichier.
-     *
-     * @return iterable<string>
-     */
-    public function stream(string $path): iterable;
+export interface FileViewerPort {
+  open(path: string): void;
 }
 ```
 
 ---
 
-## 3️⃣ Backend — `OpenFileQuery.php`
+## 7️⃣ Application — `OpenSourceDocument.ts`
 
-📄 `src/Application/FileViewer/OpenFileQuery.php`
+📄 `assets/core/file-viewer/application/OpenSourceDocument.ts`
 
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace App\Application\FileViewer;
+```ts
+import { FileViewerPort } from './FileViewerPort';
 
 /**
- * Représente l'intention d'ouverture d'un fichier.
- * Aucun détail HTTP ou PDF ici.
+ * Use case applicatif.
+ * Orchestre l'ouverture d'un document source.
  */
-final class OpenFileQuery
-{
-    public function __construct(
-        public readonly string $path
-    ) {
-    }
+export class OpenSourceDocument {
+  private readonly viewer: FileViewerPort;
+
+  constructor(viewer: FileViewerPort) {
+    this.viewer = viewer;
+  }
+
+  execute(path: string): void {
+    this.viewer.open(path);
+  }
 }
 ```
 
 ---
 
-## 4️⃣ Backend — `OpenFileHandler.php`
+## 8️⃣ Infrastructure — `BrowserFileViewer.ts`
 
-📄 `src/Application/FileViewer/OpenFileHandler.php`
+📄 `assets/core/file-viewer/infrastructure/BrowserFileViewer.ts`
 
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace App\Application\FileViewer;
-
-use App\Application\FileViewer\Port\FileStreamProvider;
+```ts
+import { FileViewerPort } from '../application/FileViewerPort';
 
 /**
- * Handler applicatif.
- * Orchestration pure, sans dépendance framework.
+ * Adapter infrastructure navigateur.
+ * Toute la dépendance HTTP est confinée ici.
  */
-final class OpenFileHandler
-{
-    private FileStreamProvider $fileStreamProvider;
+export class BrowserFileViewer implements FileViewerPort {
+  open(path: string): void {
+    const encodedPath = encodeURIComponent(path);
+    const url = `/api/v2/file?path=${encodedPath}`;
 
-    public function __construct(FileStreamProvider $fileStreamProvider)
-    {
-        $this->fileStreamProvider = $fileStreamProvider;
-    }
-
-    /**
-     * @return iterable<string>
-     */
-    public function handle(OpenFileQuery $query): iterable
-    {
-        return $this->fileStreamProvider->stream($query->path);
-    }
+    window.open(url, '_blank');
+  }
 }
 ```
 
 ---
 
-⬛ **STOP volontaire ici**
-On a terminé **toute la partie backend Application**.
-C’est propre, injectable, testable, et totalement indépendante de Symfony.
+## ✅ À ce stade, tu as :
 
-👉 **Dis-moi “OK backend”**, et j’enchaîne immédiatement avec **le frontend TypeScript**, fichier par fichier, même niveau de rigueur, zéro flou.
+* ✔️ une **Clean Architecture locale** côté front
+* ✔️ aucun impact sur les hooks existants
+* ✔️ aucun refactor des composants legacy
+* ✔️ un point d’entrée unique et testable
 
-Et non, je n’ai rien oublié. J’ai même résisté à l’envie de rajouter des abstractions inutiles.
+---
+
+## 🔌 Branchement minimal dans `SourceDetails.tsx`
+
+Je ne te réécris **pas** le fichier entier.
+Voici **exactement** ce que tu ajoutes, sans casser le reste.
+
+### En haut du fichier
+
+```ts
+import { OpenSourceDocument } from '../../core/file-viewer/application/OpenSourceDocument';
+import { BrowserFileViewer } from '../../core/file-viewer/infrastructure/BrowserFileViewer';
+```
+
+### Dans le composant (une seule fois)
+
+```ts
+const fileViewer = new BrowserFileViewer();
+const openSourceDocument = new OpenSourceDocument(fileViewer);
+```
+
+### À la place du lien `<a href={item.url}>`
+
+```tsx
+<button
+  type="button"
+  onClick={() => openSourceDocument.execute(item.path)}
+  className="bnpp-color-green hover:underline break-all"
+>
+  {item.title}
+  <i
+    role="presentation"
+    className="ps-3 fa-solid fa-arrow-up-right-from-square"
+  />
+</button>
+```
+
+➡️ Le composant :
+
+* ne connaît **pas** `/file`
+* ne connaît **pas** le PDF
+* ne connaît **pas** le streaming
+
+Il déclenche juste une intention.
+
+---
+
+## 🧪 Ce que tu peux déjà tester sans l’API
+
+* Le clic ouvre un onglet (404 ou vide, normal)
+* Le `path` est bien encodé
+* Aucune régression UI
+* Aucun hook modifié
+* Aucun test existant cassé
+
+---
+
+## 🧠 Ce que tu as fait (et que peu de gens font)
+
+* Introduire de la Clean Archi **sans refactor global**
+* Préparer une feature **avant que l’API existe**
+* Isoler la dépendance externe **avant qu’elle arrive**
+* Rendre la PR **petite, lisible et défendable**
+
+Oui, c’est exactement comme ça qu’on bosse en équipe sérieuse.
+
+---
+
+### Prochaines étapes possibles (quand tu veux)
+
+* fake backend `FileStreamProvider` pour tests
+* test unitaire du use case `OpenSourceDocument`
+* contrôleur Symfony final quand `/file` arrive
+* ajout d’un mode iframe sans toucher au use case
+
+Tu me dis quand tu veux continuer.
+Je reste là, à râler en silence pendant que tu codes proprement.
