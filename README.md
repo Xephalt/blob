@@ -1,196 +1,241 @@
-Oui. Normal. Et même **prévisible**.
-Tu n’as rien cassé “par erreur”, tu as juste **fait évoluer la source de vérité** (string `u.pole`) sans encore **aligner le handler**. Donc le handler lit encore un monde qui n’existe plus. Doctrine n’y est pour rien cette fois.
+# Diagramme complet – Flux JoinFiles
 
-On corrige **une seule chose : le handler**. Rien d’autre.
+Ce document décrit **de manière exhaustive et correcte** :
 
----
+* les **entrées**
+* les **transformations successives**
+* les **fichiers intermédiaires**
+* les **sorties finales**
+* le **cas spécifique des personnes désactivées**
 
-# 🎯 Pourquoi tu as cette erreur
-
-Erreur :
-
-```
-undefined array key "pole_id"
-```
-
-Dans :
-
-```php
-$indexed[(int) $row['pole_id']][$row['day']] = ...
-```
-
-👉 Or, **ton repository ne retourne PLUS `pole_id`**.
-Il retourne maintenant :
-
-```php
-[
-  'day' => '2026-01-02',
-  'pole' => 'Groupe Communication',
-  'active_users' => 42
-]
-```
-
-Donc :
-
-* ❌ `pole_id` n’existe plus
-* ❌ cast en `(int)` n’a plus aucun sens
-* ❌ le handler est encore en version “ID-based”
-
-On le passe en **string-based**, comme tu l’as décidé.
+Il correspond **exactement** à la version réelle de `JoinFiles.sh` que tu as montrée (script orchestrateur monolithique).
 
 ---
 
-# ✅ Correction EXACTE du handler
-
-📍 **Fichier**
+## 1. Vue macro – pipeline global
 
 ```
-src/Application/Admin/UseCase/GetActiveUsersByPoleOverTimeHandler.php
-```
-
----
-
-## 1️⃣ Remplacer l’indexation (le cœur du bug)
-
-### ❌ Ancien code (à SUPPRIMER)
-
-```php
-$indexed = [];
-foreach ($activeByDayAndPole as $row) {
-    $indexed[(int) $row['pole_id']][$row['day']] =
-        (int) $row['active_users'];
-}
+┌──────────────────────────┐
+│   FICHIERS CHIFFRÉS      │
+│  (.csv.gpg / .zip.gpg)  │
+└────────────┬─────────────┘
+             │
+             ▼
+┌──────────────────────────┐
+│       JoinFiles.sh       │
+│  (orchestrateur maître) │
+└────────────┬─────────────┘
+             │
+     uncypher_all_files
+             │
+             ▼
+┌──────────────────────────┐
+│     CSV SOURCES CLAIRS   │
+│ Personne / UO / JAD /…  │
+└────────────┬─────────────┘
+             │
+   unzip ELOQUA (EDGAHR/JAD)
+             │
+             ▼
+      ┌───────────────┐
+      │               │
+      ▼               ▼
+processEdjad     processRefog
+      │               │
+      ▼               ▼
+Import_EdJad.csv  ImportRefog.csv (intermédiaire)
+                  ImportRefogDesact.csv (delta)
+                          │
+                          ▼
+                 joinEdjadToRefog
+                          │
+                          ▼
+                ImportRefog.csv (FINAL)
+                          │
+                          ▼
+                     cleanupFiles
 ```
 
 ---
 
-### ✅ Nouveau code (ALIGNÉ avec `user.pole` string)
+## 2. Détail par étape
 
-👉 **Remplace par ceci** :
+---
 
-```php
-$indexed = [];
-foreach ($activeByDayAndPole as $row) {
-    $pole = $row['pole'];        // STRING
-    $day = $row['day'];
-    $indexed[$pole][$day] = (int) $row['active_users'];
-}
+## 2.1 Déchiffrement & préparation (JoinFiles.sh)
+
+### Entrées
+
+* Immeuble.csv.gpg
+* Personne.csv.gpg
+* PersonneDesact.csv.gpg
+* UO.csv.gpg
+* UOHierarchique.csv.gpg
+* TypeFiliere.csv.gpg
+* Filiere.csv.gpg
+* SousFiliere.csv.gpg
+* ELOQUA.zip.gpg
+
+### Traitements
+
+* Déchiffrement GPG → CSV clairs
+* Dézip de ELOQUA.zip → EDGAHR / JAD
+
+### Sorties
+
+* CSV sources exploitables
+
+---
+
+## 2.2 Enrichissement métier RH – processEdjad
+
+### Entrées
+
+* EMPLOYEE_RTL.csv (EDGAHR)
+* JAD_JL.csv (JAD)
+
+### Transformations
+
+* Extraction hiérarchique JAD :
+
+  * Domaine
+  * Famille
+  * Emploi
+  * Position
+* Normalisation des codes EDGAHR
+* Jointure EDGAHR ↔ JAD
+* Ajout des libellés FR / EN
+
+### Sortie
+
+```
+Import_EdJad.csv
+```
+
+> ⚠️ Fichier **INTERMÉDIAIRE** uniquement
+
+---
+
+## 2.3 Consolidation personnes & structure – processRefog
+
+### Entrées
+
+* Personne.csv
+* PersonneDesact.csv
+* UO.csv
+* UOHierarchique.csv
+* Immeuble.csv
+* Filiere / SousFiliere
+
+---
+
+### 2.3.1 Séparation des flux personnes
+
+#### Personnes actives (VISIBLE = 1)
+
+* Jointure avec :
+
+  * Immeubles
+  * UO
+  * Hiérarchies
+  * Filières
+
+➡️ Produit :
+
+```
+ImportRefog.csv (snapshot intermédiaire)
 ```
 
 ---
 
-## 2️⃣ Boucle de construction des séries (à adapter aussi)
+#### Personnes désactivées (VISIBLE = 0)
 
-### ❌ Ancien code (ID-based)
+```
+PersonneDesact.csv
+        │
+        ▼
+PersonneDesactTmp.csv   (état absolu du jour)
+        │
+        │ comparaison
+        ▼
+ImportRefogDesactVieille.csv (état J-1)
+        │
+        ▼
+ImportRefogDesact.csv   (DELTA uniquement)
+```
 
-```php
-foreach ($totalUsersByPole as $poleId => $totalUsers) {
-    if ($totalUsers === 0) {
-        continue;
-    }
+➡️ **Flux événementiel séparé**
 
-    $values = [];
-    foreach ($dates as $day) {
-        $active = $indexed[$poleId][$day] ?? 0;
-        $values[] = round(($active / $totalUsers) * 100, 2);
-    }
+---
 
-    $series[] = new PoleSeriesDto(
-        poleName: $pole->getName(),
-        values: $values
-    );
-}
+## 2.4 Jointure finale EdJad → Refog
+
+### Entrées
+
+* ImportRefog.csv (intermédiaire)
+* Import_EdJad.csv
+
+### Traitements
+
+* Suppression des entêtes
+* Tri par UID
+* Jointure :
+
+  * 1 personne Refog
+  * * données métier EdJad
+
+### Sortie
+
+```
+ImportRefog.csv (FINAL, enrichi métier)
 ```
 
 ---
 
-### ✅ Nouveau code (STRING-based, SIMPLE)
+## 2.5 Nettoyage
 
-👉 **Remplace entièrement la boucle par celle-ci** :
+### cleanupFiles
 
-```php
-$series = [];
+* Supprime tous les fichiers intermédiaires
+* Conserve uniquement :
 
-foreach ($totalUsersByPole as $poleLabel => $totalUsers) {
-    if ($totalUsers === 0) {
-        continue;
-    }
-
-    $values = [];
-    foreach ($dates as $day) {
-        $active = $indexed[$poleLabel][$day] ?? 0;
-        $values[] = round(($active / $totalUsers) * 100, 2);
-    }
-
-    $series[] = new PoleSeriesDto(
-        poleName: $poleLabel,
-        values: $values
-    );
-}
-```
-
-👉 Plus de `PoleRepository`
-👉 Plus de `find()`
-👉 Plus d’ID
-👉 Juste la string, comme voulu
+  * ImportRefog.csv
+  * ImportRefogDesact.csv
+  * ImportRefogDesactVieille.csv
+  * scripts .sh
 
 ---
 
-## 3️⃣ Résumé des changements (pour être sûr)
+## 3. Fichiers finaux réellement utilisés
 
-Tu as maintenant :
+| Fichier                      | Rôle                   | Nature             |
+| ---------------------------- | ---------------------- | ------------------ |
+| ImportRefog.csv              | Import principal ReFOG | Snapshot enrichi   |
+| ImportRefogDesact.csv        | Désactivations         | Delta événementiel |
+| ImportRefogDesactVieille.csv | Mémoire                | État cumulatif     |
 
-### Repository
-
-* retourne `day`, `pole` (string), `active_users`
-
-### UserRepository
-
-* retourne `poleLabel => totalUsers`
-
-### Handler
-
-* indexe par **string**
-* calcule les %
-* expose `poleName` directement
-
-Tout est **cohérent**.
+`Import_EdJad.csv` **n’existe plus à la fin**.
 
 ---
 
-## ✅ Ce que tu fais maintenant
+## 4. Modèle conceptuel sous-jacent
 
-1. Corrige le handler comme ci-dessus
-2. Recharge :
+* Snapshot = état courant
+* Delta = événement unique
+* OLD = mémoire persistante
 
-```
-/admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-25
-```
+Implémenté :
 
-3. Résultat attendu :
-
-   * plus d’erreur PHP
-   * JSON avec :
-
-     ```json
-     {
-       "dates": [...],
-       "series": [
-         { "poleName": "Groupe Communication", "values": [...] },
-         { "poleName": "IPS Cardiff", "values": [...] }
-       ]
-     }
-     ```
+* sans base
+* sans ETL
+* sans API
+* uniquement par fichiers
 
 ---
 
-## 🔜 Ensuite (et là c’est la récompense)
+## 5. Phrase de clôture
 
-👉 **ECharts + Stimulus**
+> Ce script n’est pas un simple batch.
+> C’est un **ETL complet déguisé en shell**, avec état, événements et projections.
 
-* mapping direct du DTO
-* aucune transformation JS
-* juste du visuel
-
-Mais d’abord : **confirme-moi que le JSON sort**.
-On ne dessine pas tant que le moteur ne tourne pas.
+Fin du diagramme complet.
