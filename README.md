@@ -1,119 +1,57 @@
-Parfait, merci. Là on a **la vérité brute**, et elle est… disons… très instructive.
-Spoiler : **Doctrine ne ment pas**, et **le schéma est bancal**. Mais on peut travailler avec.
+Oui, je vois **parfaitement** ce que tu veux dire. Et pour une fois, je ne vais pas te faire la morale avec “normalisation”, “lookup table” et autres sermons d’architecte qui ont trop de temps.
+Tu as raison **dans ton contexte**, et on va **assumer ce choix proprement**.
+
+On fait donc une chose simple, honnête et réversible :
+
+> **La source de vérité = `user.pole` (STRING)**
+> Pas de table `pole`.
+> Pas d’ID.
+> Pas de faux mapping.
+> Juste ce qui est réellement utilisé aujourd’hui.
 
 ---
 
-# 🔍 Ce que montrent VRAIMENT tes tables
+## 1️⃣ Décision claire (et assumée)
 
-## 1️⃣ Table `user` (le point clé)
+👉 **On supprime complètement toute référence à `Pole`**
+👉 **On ne joint aucune autre table que celles déjà nécessaires**
+👉 **On groupe par `u.pole` (string)**
+👉 **Le libellé affiché dans le graphique = la string telle quelle**
 
-Dans `user` :
+C’est cohérent avec :
 
-```text
-pole  varchar(255) YES
-```
-
-👉 **Ce n’est PAS une clé étrangère**
-👉 **Ce n’est PAS un `pole_id`**
-👉 **C’est une chaîne de caractères**
-
-Donc :
-
-* ❌ pas de relation SQL
-* ❌ pas de relation Doctrine possible automatique
-* ❌ `u.pole` **n’est pas une association**, juste une colonne string
-
-Doctrine avait raison de dire :
-
-> entity/user has no association named pole
-
-Parce que **il n’y en a pas**.
+* ton besoin actuel
+* ton modèle réel
+* ton objectif de livraison rapide
+* une Clean Arch pragmatique (la dette est localisée)
 
 ---
 
-## 2️⃣ Table `pole`
+## 2️⃣ Ce que ça change concrètement (très peu de choses)
 
-```text
-id        int (PK)
-entity_id int (FK)
-name      varchar(255)
-```
-
-👉 Les pôles existent **en tant que table**
-👉 MAIS les users **n’y sont pas reliés par ID**
-
----
-
-## 3️⃣ Table `entity`
-
-Aucun impact ici pour le bug actuel.
-Elle est hors sujet pour le calcul demandé.
-
----
-
-# 🚨 Conclusion brutale (mais importante)
-
-Ton modèle réel est **incohérent** :
-
-```
-user.pole = VARCHAR
-pole.id   = INT
-```
-
-Donc tu as :
-
-* des users qui stockent le **nom du pôle** (ou un slug ?)
-* une table `pole` avec un `id` + `name`
-* **aucun lien relationnel exploitable proprement**
-
-👉 Donc **AUCUN `ManyToOne` possible** sans refonte du schéma.
-
-Mais tu as dit un truc très important plus tôt :
-
-> “je veux un truc qui marche maintenant”
-
-Donc on va **s’adapter au réel**, pas refaire la base.
-
----
-
-# ✅ Solution pragmatique (et propre dans ce contexte)
-
-👉 On joint **sur le nom du pôle**, pas sur une relation Doctrine.
-
-Oui, ce n’est pas idéal.
-Oui, c’est la réalité de ton projet.
-
----
-
-## 🔧 Correction à faire (UNE seule ligne critique)
-
-Dans ta méthode repository :
-
-### ❌ Ce qu’on avait (faux dans TON schéma)
+### Avant (version “lookup pôle” que tu ne veux pas)
 
 ```php
-->join('u.pole', 'p')
+p.id AS pole_id
+JOIN Pole p ON p.name = u.pole
+GROUP BY p.id
 ```
 
-### ✅ Ce qu’il faut FAIRE chez toi
+### Maintenant (version **string-first**, celle que tu veux)
 
 ```php
-->join(
-    'App\Entity\Pole',
-    'p',
-    'WITH',
-    'p.name = u.pole'
-)
+u.pole AS pole
+GROUP BY u.pole
 ```
 
-👉 On fait une **jointure manuelle** Doctrine
-👉 Basée sur `user.pole` (string) = `pole.name`
+C’est tout.
+Pas de magie cachée. Pas de doctrine-fiction.
 
 ---
 
-## 🧩 Méthode repository corrigée (version FONCTIONNELLE)
+## 3️⃣ Méthode repository FINALE (alignée avec ton choix)
 
-👉 **Remplace intégralement ta méthode** par celle-ci :
+👉 **Remplace la méthode par celle-ci**, et uniquement celle-ci.
 
 ```php
 public function countActiveUsersPerDayByPole(
@@ -126,19 +64,14 @@ public function countActiveUsersPerDayByPole(
     $qb
         ->select(
             'DATE(m.createdAt) AS day',
-            'p.id AS pole_id',
+            'u.pole AS pole',
             'COUNT(DISTINCT u.id) AS active_users'
         )
         ->join('m.conversation', 'c')
         ->join('c.user', 'u')
-        ->join(
-            'App\Entity\Pole',
-            'p',
-            'WITH',
-            'p.name = u.pole'
-        )
+        ->where('u.pole IS NOT NULL')
         ->groupBy('day')
-        ->addGroupBy('p.id')
+        ->addGroupBy('u.pole')
         ->orderBy('day', 'ASC');
 
     if ($from !== null) {
@@ -163,46 +96,90 @@ public function countActiveUsersPerDayByPole(
 }
 ```
 
----
+### Format de sortie (important pour la suite)
 
-# 🧠 Pourquoi cette solution est la bonne ICI
-
-* ✔️ Elle respecte **la réalité de ta base**
-* ✔️ Elle ne casse **aucune entité**
-* ✔️ Elle n’introduit **aucune dette Doctrine supplémentaire**
-* ✔️ Elle est **localisée** dans le repository (bon endroit)
-
----
-
-# ⚠️ Ce que je te déconseille FORTEMENT (pour l’instant)
-
-* ❌ Ajouter une fausse relation `ManyToOne` dans `User`
-* ❌ Renommer la colonne `pole` à la volée
-* ❌ “Deviner” un mapping Doctrine qui n’existe pas
-
-Ça, c’est pour un refactor futur, pas pour un KPI.
+```php
+[
+  [
+    'day' => '2026-01-02',
+    'pole' => 'Groupe Communication',
+    'active_users' => 42
+  ],
+  [
+    'day' => '2026-01-02',
+    'pole' => 'IPS Cardiff',
+    'active_users' => 17
+  ]
+]
+```
 
 ---
 
-# ✅ Prochaine action IMMÉDIATE
+## 4️⃣ Pourquoi ce choix est CLEAN (malgré tout)
 
-1. Remplace la méthode repository
-2. Recharge la page :
+Même si ce n’est pas “académique”, c’est **propre** parce que :
 
-   ```
-   /admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-25
-   ```
-3. Si ça passe :
+* ✔️ La vérité est respectée (la DB telle qu’elle est)
+* ✔️ Le repository reste infra
+* ✔️ Le handler ne sait PAS comment le pôle est identifié
+* ✔️ Le DTO exposera juste un `poleName`
+* ✔️ Le front consomme une string, point
 
-   * 🎉 tu dois voir du JSON
-4. Si erreur :
+Et surtout :
 
-   * copie **le message exact**
+👉 **Quand tu normaliseras plus tard**, tu changeras :
+
+* la requête du repository
+* et UNE ligne dans le handler
+
+Le reste ne bougera pas.
+C’est exactement le but.
 
 ---
 
-Ensuite seulement, on passera à :
-👉 **l’affichage ECharts côté front**
-👉 là où ça devient visuel et satisfaisant
+## 5️⃣ Conséquence côté handler (je te prépare mentalement)
 
-Mais d’abord : **fais parler la base**.
+Dans le handler, au lieu de faire :
+
+```php
+$indexed[$poleId][$day] = ...
+```
+
+On fera :
+
+```php
+$indexed[$poleName][$day] = ...
+```
+
+Et pour le dénominateur :
+
+* soit `countUsersByPoleLabel()`
+* soit un `COUNT(*) GROUP BY u.pole`
+
+Mais **pas maintenant**. Une étape à la fois.
+
+---
+
+## 6️⃣ Ce que tu fais MAINTENANT
+
+1. Mets à jour la méthode repository ci-dessus
+2. Recharge :
+
+```
+/admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-25
+```
+
+3. Vérifie que :
+
+   * le JSON sort
+   * les labels sont bien ceux attendus
+   * aucune jointure foireuse
+
+---
+
+👉 **Prochaine étape (quand tu dis OK)**
+On adapte **le handler** pour travailler en `string` au lieu d’ID,
+puis **ECharts** et tu verras enfin les courbes bouger.
+
+Et non, tu n’es pas en train de “mal faire”.
+Tu es en train de **faire ce qui est raisonnable aujourd’hui**, sans mentir à demain.
