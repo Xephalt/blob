@@ -1,117 +1,124 @@
-Tu viens de tomber sur un classique Doctrine : **DQL ne connaît pas `DAYOFWEEK()`** (et parfois même pas `DATE()`), donc il te sort son “expected known function…”. Symfony n’est pas méchant, juste littéral.
+Parfait, on va être **chirurgical**, parce que là c’est juste un problème de **placement**, pas de concept. Et tu as raison de bloquer avant de coller n’importe où.
 
-## ✅ Correction la plus simple et la plus rapide
+---
 
-En DQL, quand tu veux utiliser une fonction SQL “native”, tu passes par :
+# 🎯 Où mettre EXACTEMENT ce code
 
-```php
-FUNCTION('NOM_DE_LA_FONCTION_SQL', ...)
+Ce code **n’a rien à faire dans le repository**.
+Il n’a rien à faire non plus dans le handler.
+
+👉 **Il va dans le Controller**, au moment où tu traduis l’HTTP → Query applicative.
+
+Pourquoi ?
+
+* parce que le format des weekdays dépend **du protocole HTTP**
+* parce que MySQL est un **détail d’infrastructure**
+* parce que la Query applicative doit recevoir des données **cohérentes et prêtes**
+
+---
+
+## 📍 Fichier concerné
+
+```
+src/Controller/Admin/KpiController.php
 ```
 
-Donc dans ta méthode repository, tu remplaces :
-
-* `DAYOFWEEK(m.createdAt)` → `FUNCTION('DAYOFWEEK', m.createdAt)`
-* et tant qu’à faire (sinon tu vas te prendre la suivante), `DATE(m.createdAt)` → `FUNCTION('DATE', m.createdAt)`
-
-### ✅ Méthode repository corrigée
-
-Copie-colle cette version :
+Dans **la méthode** :
 
 ```php
-public function countActiveUsersPerDayByPole(
-    ?\DateTimeImmutable $from = null,
-    ?\DateTimeImmutable $to = null,
-    array $weekdays = []
-): array {
-    $qb = $this->createQueryBuilder('m');
-
-    $qb
-        ->select(
-            "FUNCTION('DATE', m.createdAt) AS day",
-            'u.pole AS pole',
-            'COUNT(DISTINCT u.id) AS active_users'
-        )
-        ->join('m.conversation', 'c')
-        ->join('c.user', 'u')
-        ->where('u.pole IS NOT NULL')
-        ->groupBy('day')
-        ->addGroupBy('u.pole')
-        ->orderBy('day', 'ASC');
-
-    if ($from !== null) {
-        $qb
-            ->andWhere('m.createdAt >= :from')
-            ->setParameter('from', $from);
-    }
-
-    if ($to !== null) {
-        $qb
-            ->andWhere('m.createdAt <= :to')
-            ->setParameter('to', $to);
-    }
-
-    if (!empty($weekdays)) {
-        $qb
-            ->andWhere("FUNCTION('DAYOFWEEK', m.createdAt) IN (:weekdays)")
-            ->setParameter('weekdays', $weekdays);
-    }
-
-    return $qb->getQuery()->getArrayResult();
-}
+public function activeUsersByPoleOverTime(...)
 ```
 
 ---
 
-## ⚠️ Attention : tes weekdays risquent d’être faux (et c’est sournois)
+## 🧩 Version AVANT (simplifiée)
 
-* PHP `format('N')` = **1 (lundi)** … **7 (dimanche)**
-* MySQL `DAYOFWEEK()` = **1 (dimanche)** … **7 (samedi)**
-
-Donc si ton front envoie `weekdays[]=1` pour “lundi”, MySQL va filtrer “dimanche”. Ambiance.
-
-### ✅ Patch minimal côté Controller (ou là où tu construis la Query)
-
-Juste après avoir récupéré `weekdays`, convertis-les au format MySQL :
+Tu as probablement quelque chose comme :
 
 ```php
-$weekdays = array_map('intval', $request->query->all('weekdays') ?? []);
+$weekdays = array_map(
+    'intval',
+    $request->query->all('weekdays') ?? []
+);
 
-// PHP: 1=Mon..7=Sun  →  MySQL DAYOFWEEK: 1=Sun..7=Sat
+$query = new ActiveUsersByPoleOverTimeQuery(
+    from: $from,
+    to: $to,
+    weekdays: $weekdays
+);
+```
+
+---
+
+## ✅ Version APRÈS (corrigée, complète)
+
+👉 **Remplace ce bloc par celui-ci**, exactement là :
+
+```php
+$weekdays = array_map(
+    'intval',
+    $request->query->all('weekdays') ?? []
+);
+
+// Conversion PHP (1=Mon..7=Sun) → MySQL DAYOFWEEK (1=Sun..7=Sat)
 $weekdays = array_map(
     static fn (int $n): int => ($n % 7) + 1,
     $weekdays
 );
+
+$query = new ActiveUsersByPoleOverTimeQuery(
+    from: $from,
+    to: $to,
+    weekdays: $weekdays
+);
 ```
 
-Mapping :
-
-* lundi(1) → 2
-* mardi(2) → 3
-* …
-* samedi(6) → 7
-* dimanche(7) → 1
+C’est **tout**.
 
 ---
 
-## Y a-t-il d’autres changements à cause du passage à `user.pole` string ?
+## 🧠 Pourquoi c’est le bon endroit (et pas ailleurs)
 
-Oui, mais **pas tout de suite**.
+* Le front parle en **jours ISO** (1=lundi)
+* PHP `DateTime::format('N')` parle en **jours ISO**
+* MySQL `DAYOFWEEK()` parle un **autre dialecte**
 
-Ce changement impacte surtout **le Handler** (indexation par `poleName` au lieu de `poleId`, et le dénominateur `countUsersByPoleLabel()` au lieu de `countUsersByPole()`).
+👉 La conversion est une **adaptation HTTP → infra**, donc **Controller**.
 
-Mais tant que ton objectif est “**voir le JSON s’afficher**”, on ne touche pas à ça tant que :
-
-1. la route répond,
-2. la requête sort des lignes.
-
-Fais d’abord passer cette requête. Ensuite on ajuste proprement le Handler.
+Le Handler doit pouvoir raisonner comme si le monde était logique.
+Le Repository doit juste exécuter.
 
 ---
 
-### Ce que tu fais maintenant
+## 🔴 Ce que tu ne dois PAS faire
 
-1. Remplace la méthode repository par la version `FUNCTION(...)` ci-dessus
-2. Ajoute la conversion weekday côté controller (si tu utilises ce filtre)
-3. Reteste l’URL
+* ❌ Mettre ça dans le repository
+* ❌ Mettre ça dans la Query
+* ❌ Mettre ça dans le handler
+* ❌ Mettre ça dans le front “parce que c’est plus simple”
 
-Si ça pète encore, copie l’erreur exacte (la prochaine sera probablement sur `DATE()` si tu n’avais pas corrigé, mais là on l’a déjà blindée).
+Sinon, tu crées un **couplage invisible** qui te pètera à la figure plus tard.
+
+---
+
+## ✅ Ce que tu fais maintenant
+
+1. Colle exactement ce bloc **dans le controller**
+2. Recharge l’URL :
+
+```
+/admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-25&weekdays[]=1&weekdays[]=2
+```
+
+3. Vérifie :
+
+   * pas d’erreur DQL
+   * JSON qui sort
+   * les jours filtrés correctement
+
+---
+
+Si ça marche → 🎉 **on attaque ECharts**
+Si ça casse → copie **le message exact**, on le démonte.
+
+Tu fais exactement ce qu’il faut.
