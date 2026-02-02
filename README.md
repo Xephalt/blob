@@ -1,194 +1,208 @@
-Parfait. L’enthousiasme est noté. Profitons-en avant qu’il ne soit écrasé par Symfony.
-
-👉 **Étape 3 uniquement**
-👉 **Controller KPI + route HTTP**
-👉 **Objectif unique : taper une URL et voir du JSON propre**
-👉 **Toujours zéro ECharts, zéro front**
+Parfait, merci. Là on a **la vérité brute**, et elle est… disons… très instructive.
+Spoiler : **Doctrine ne ment pas**, et **le schéma est bancal**. Mais on peut travailler avec.
 
 ---
 
-# 🥉 ÉTAPE 3 — Endpoint HTTP (KPI Controller)
+# 🔍 Ce que montrent VRAIMENT tes tables
 
-## Objectif
+## 1️⃣ Table `user` (le point clé)
 
-Brancher ton **use case applicatif** sur le monde réel, sans le polluer.
+Dans `user` :
 
-À la fin de cette étape, tu pourras appeler une URL du genre :
-
-```
-/admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-25&weekdays[]=1&weekdays[]=2
+```text
+pole  varchar(255) YES
 ```
 
-et voir un JSON exploitable.
+👉 **Ce n’est PAS une clé étrangère**
+👉 **Ce n’est PAS un `pole_id`**
+👉 **C’est une chaîne de caractères**
+
+Donc :
+
+* ❌ pas de relation SQL
+* ❌ pas de relation Doctrine possible automatique
+* ❌ `u.pole` **n’est pas une association**, juste une colonne string
+
+Doctrine avait raison de dire :
+
+> entity/user has no association named pole
+
+Parce que **il n’y en a pas**.
 
 ---
 
-## 1️⃣ Où ajouter la route
+## 2️⃣ Table `pole`
 
-Tu as déjà un **KPI controller existant**.
-Typiquement chez toi :
-
+```text
+id        int (PK)
+entity_id int (FK)
+name      varchar(255)
 ```
-src/Controller/Admin/KpiController.php
-```
 
-(on ne crée PAS un nouveau controller pour ça, sinon c’est du zèle inutile)
+👉 Les pôles existent **en tant que table**
+👉 MAIS les users **n’y sont pas reliés par ID**
 
 ---
 
-## 2️⃣ Méthode à ajouter dans le controller
+## 3️⃣ Table `entity`
 
-👉 **Tu ajoutes UNE méthode**, rien d’autre.
-👉 Tu n’édites pas les routes existantes.
+Aucun impact ici pour le bug actuel.
+Elle est hors sujet pour le calcul demandé.
 
-### Code à copier-coller
+---
+
+# 🚨 Conclusion brutale (mais importante)
+
+Ton modèle réel est **incohérent** :
+
+```
+user.pole = VARCHAR
+pole.id   = INT
+```
+
+Donc tu as :
+
+* des users qui stockent le **nom du pôle** (ou un slug ?)
+* une table `pole` avec un `id` + `name`
+* **aucun lien relationnel exploitable proprement**
+
+👉 Donc **AUCUN `ManyToOne` possible** sans refonte du schéma.
+
+Mais tu as dit un truc très important plus tôt :
+
+> “je veux un truc qui marche maintenant”
+
+Donc on va **s’adapter au réel**, pas refaire la base.
+
+---
+
+# ✅ Solution pragmatique (et propre dans ce contexte)
+
+👉 On joint **sur le nom du pôle**, pas sur une relation Doctrine.
+
+Oui, ce n’est pas idéal.
+Oui, c’est la réalité de ton projet.
+
+---
+
+## 🔧 Correction à faire (UNE seule ligne critique)
+
+Dans ta méthode repository :
+
+### ❌ Ce qu’on avait (faux dans TON schéma)
 
 ```php
-<?php
+->join('u.pole', 'p')
+```
 
-namespace App\Controller\Admin;
+### ✅ Ce qu’il faut FAIRE chez toi
 
-use App\Application\Admin\Query\ActiveUsersByPoleOverTimeQuery;
-use App\Application\Admin\UseCase\GetActiveUsersByPoleOverTimeHandler;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Routing\Annotation\Route;
+```php
+->join(
+    'App\Entity\Pole',
+    'p',
+    'WITH',
+    'p.name = u.pole'
+)
+```
 
-class KpiController extends AbstractController
-{
-    #[Route(
-        '/admin/kpi/active-users-by-pole',
-        name: 'admin_kpi_active_users_by_pole',
-        methods: ['GET']
-    )]
-    public function activeUsersByPoleOverTime(
-        Request $request,
-        GetActiveUsersByPoleOverTimeHandler $handler
-    ): JsonResponse {
-        $from = new \DateTimeImmutable($request->query->get('from'));
-        $to = new \DateTimeImmutable($request->query->get('to'));
+👉 On fait une **jointure manuelle** Doctrine
+👉 Basée sur `user.pole` (string) = `pole.name`
 
-        /** @var int[] $weekdays */
-        $weekdays = array_map(
-            'intval',
-            $request->query->all('weekdays') ?? []
-        );
+---
 
-        $query = new ActiveUsersByPoleOverTimeQuery(
-            from: $from,
-            to: $to,
-            weekdays: $weekdays
-        );
+## 🧩 Méthode repository corrigée (version FONCTIONNELLE)
 
-        $result = $handler($query);
+👉 **Remplace intégralement ta méthode** par celle-ci :
 
-        return $this->json($result);
+```php
+public function countActiveUsersPerDayByPole(
+    ?\DateTimeImmutable $from = null,
+    ?\DateTimeImmutable $to = null,
+    array $weekdays = []
+): array {
+    $qb = $this->createQueryBuilder('m');
+
+    $qb
+        ->select(
+            'DATE(m.createdAt) AS day',
+            'p.id AS pole_id',
+            'COUNT(DISTINCT u.id) AS active_users'
+        )
+        ->join('m.conversation', 'c')
+        ->join('c.user', 'u')
+        ->join(
+            'App\Entity\Pole',
+            'p',
+            'WITH',
+            'p.name = u.pole'
+        )
+        ->groupBy('day')
+        ->addGroupBy('p.id')
+        ->orderBy('day', 'ASC');
+
+    if ($from !== null) {
+        $qb
+            ->andWhere('m.createdAt >= :from')
+            ->setParameter('from', $from);
     }
+
+    if ($to !== null) {
+        $qb
+            ->andWhere('m.createdAt <= :to')
+            ->setParameter('to', $to);
+    }
+
+    if (!empty($weekdays)) {
+        $qb
+            ->andWhere('DAYOFWEEK(m.createdAt) IN (:weekdays)')
+            ->setParameter('weekdays', $weekdays);
+    }
+
+    return $qb->getQuery()->getArrayResult();
 }
 ```
 
 ---
 
-## 3️⃣ Pourquoi ce controller est “propre”
+# 🧠 Pourquoi cette solution est la bonne ICI
 
-Regarde bien ce qu’il **ne fait pas** :
-
-* ❌ aucun calcul
-* ❌ aucune logique métier
-* ❌ aucun accès repository
-* ❌ aucun `if` métier
-
-Il fait **strictement** :
-
-* HTTP → Query
-* Query → Handler
-* Handler → JSON
-
-C’est exactement le rôle d’un controller en Clean Architecture.
-Pas plus. Pas moins.
+* ✔️ Elle respecte **la réalité de ta base**
+* ✔️ Elle ne casse **aucune entité**
+* ✔️ Elle n’introduit **aucune dette Doctrine supplémentaire**
+* ✔️ Elle est **localisée** dans le repository (bon endroit)
 
 ---
 
-## 4️⃣ À quoi doit ressembler le JSON retourné
+# ⚠️ Ce que je te déconseille FORTEMENT (pour l’instant)
 
-Quand tout est branché correctement, tu dois voir un JSON du genre :
+* ❌ Ajouter une fausse relation `ManyToOne` dans `User`
+* ❌ Renommer la colonne `pole` à la volée
+* ❌ “Deviner” un mapping Doctrine qui n’existe pas
 
-```json
-{
-  "dates": [
-    "2026-01-02",
-    "2026-01-03",
-    "2026-01-04"
-  ],
-  "series": [
-    {
-      "poleName": "Groupe Communication",
-      "values": [42.86, 38.12, 51.03]
-    },
-    {
-      "poleName": "IPS Cardiff",
-      "values": [21.45, 19.02, 23.88]
-    }
-  ]
-}
-```
-
-👉 **Exactement** ce qu’ECharts attend plus tard
-👉 Aucun retraitement JS nécessaire
+Ça, c’est pour un refactor futur, pas pour un KPI.
 
 ---
 
-## 5️⃣ Test immédiat (à faire maintenant)
+# ✅ Prochaine action IMMÉDIATE
 
-Dans ton navigateur ou via curl :
+1. Remplace la méthode repository
+2. Recharge la page :
 
-```
-/admin/kpi/active-users-by-pole
-    ?from=2026-01-01
-    &to=2026-01-25
-```
+   ```
+   /admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-25
+   ```
+3. Si ça passe :
 
-Puis avec weekdays :
+   * 🎉 tu dois voir du JSON
+4. Si erreur :
 
-```
-/admin/kpi/active-users-by-pole
-    ?from=2026-01-01
-    &to=2026-01-25
-    &weekdays[]=1
-    &weekdays[]=2
-    &weekdays[]=3
-```
-
-Si :
-
-* la route répond
-* le JSON est cohérent
-* aucune exception Doctrine
-
-👉 alors ton **back est sain**.
+   * copie **le message exact**
 
 ---
 
-## ✅ Ce que tu fais maintenant
+Ensuite seulement, on passera à :
+👉 **l’affichage ECharts côté front**
+👉 là où ça devient visuel et satisfaisant
 
-1. Ajouter cette méthode au controller
-2. Tester l’URL
-3. Vérifier que :
-
-   * les dates sont alignées
-   * les séries ont toutes la même longueur
-4. Me dire **OK j’ai le JSON**
-
----
-
-### 🔜 Étape suivante (la fun)
-
-👉 **ECharts côté front (Stimulus)**
-
-* init du chart
-* mapping direct du DTO
-* toggle des séries par pôle
-
-Mais d’abord : **montre-moi ce JSON**.
-Sinon on construit un cockpit sans moteur.
+Mais d’abord : **fais parler la base**.
