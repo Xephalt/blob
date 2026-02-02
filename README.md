@@ -1,241 +1,203 @@
-# Diagramme complet – Flux JoinFiles
+Oui, tu as **100 % raison**. Et ce n’est pas un “petit détail”, c’est exactement le genre de micro-incohérence qui pourrit un système si on la laisse passer. Bonne pioche.
 
-Ce document décrit **de manière exhaustive et correcte** :
-
-* les **entrées**
-* les **transformations successives**
-* les **fichiers intermédiaires**
-* les **sorties finales**
-* le **cas spécifique des personnes désactivées**
-
-Il correspond **exactement** à la version réelle de `JoinFiles.sh` que tu as montrée (script orchestrateur monolithique).
+Je vais être clair, puis te donner **la correction propre**, sans mapping chelou.
 
 ---
 
-## 1. Vue macro – pipeline global
+## 1️⃣ Le vrai problème (et tu l’as identifié)
 
-```
-┌──────────────────────────┐
-│   FICHIERS CHIFFRÉS      │
-│  (.csv.gpg / .zip.gpg)  │
-└────────────┬─────────────┘
-             │
-             ▼
-┌──────────────────────────┐
-│       JoinFiles.sh       │
-│  (orchestrateur maître) │
-└────────────┬─────────────┘
-             │
-     uncypher_all_files
-             │
-             ▼
-┌──────────────────────────┐
-│     CSV SOURCES CLAIRS   │
-│ Personne / UO / JAD /…  │
-└────────────┬─────────────┘
-             │
-   unzip ELOQUA (EDGAHR/JAD)
-             │
-             ▼
-      ┌───────────────┐
-      │               │
-      ▼               ▼
-processEdjad     processRefog
-      │               │
-      ▼               ▼
-Import_EdJad.csv  ImportRefog.csv (intermédiaire)
-                  ImportRefogDesact.csv (delta)
-                          │
-                          ▼
-                 joinEdjadToRefog
-                          │
-                          ▼
-                ImportRefog.csv (FINAL)
-                          │
-                          ▼
-                     cleanupFiles
-```
+Aujourd’hui, dans TON système :
+
+* **Stimulus / UI** envoie :
+
+  * `weekdays[]=0` → **lundi**
+  * `weekdays[]=1` → mardi
+  * …
+  * `weekdays[]=6` → dimanche
+
+👉 Donc **0-based, ISO-like, lundi = 0**
+
+Mais :
+
+* PHP `DateTime::format('N')` → **1 = lundi**
+* MySQL `DAYOFWEEK()` → **1 = dimanche**
+
+Bref : **trois conventions différentes**, et aucune n’est “mauvaise”, mais les mélanger est une erreur.
+
+👉 **Tu as raison : on ne doit PAS adapter l’UI à la DB.**
+👉 **On doit adapter le backend au contrat UI.**
 
 ---
 
-## 2. Détail par étape
+## 2️⃣ Décision Clean Architecture (la bonne)
+
+On fait ceci :
+
+### ❌ On NE FAIT PLUS :
+
+* `DAYOFWEEK()` en SQL
+* mapping ISO → MySQL
+* conversion “bizarre” dans le controller
+
+### ✅ On FAIT :
+
+* le **repository ne connaît PAS les weekdays**
+* le **handler filtre les jours en PHP**
+* les weekdays restent **0-based, lundi = 0**, partout
+
+👉 Résultat :
+
+* le front ne change pas
+* le controller ne bidouille pas
+* le repository reste simple
+* le handler porte la règle métier (logique)
+
+C’est **exactement** ce que la Clean Arch demande.
 
 ---
 
-## 2.1 Déchiffrement & préparation (JoinFiles.sh)
+## 3️⃣ Concrètement : ce qu’on change
 
-### Entrées
+### 🔥 À SUPPRIMER (si ce n’est pas déjà fait)
 
-* Immeuble.csv.gpg
-* Personne.csv.gpg
-* PersonneDesact.csv.gpg
-* UO.csv.gpg
-* UOHierarchique.csv.gpg
-* TypeFiliere.csv.gpg
-* Filiere.csv.gpg
-* SousFiliere.csv.gpg
-* ELOQUA.zip.gpg
+Dans le **controller** ❌ :
 
-### Traitements
-
-* Déchiffrement GPG → CSV clairs
-* Dézip de ELOQUA.zip → EDGAHR / JAD
-
-### Sorties
-
-* CSV sources exploitables
-
----
-
-## 2.2 Enrichissement métier RH – processEdjad
-
-### Entrées
-
-* EMPLOYEE_RTL.csv (EDGAHR)
-* JAD_JL.csv (JAD)
-
-### Transformations
-
-* Extraction hiérarchique JAD :
-
-  * Domaine
-  * Famille
-  * Emploi
-  * Position
-* Normalisation des codes EDGAHR
-* Jointure EDGAHR ↔ JAD
-* Ajout des libellés FR / EN
-
-### Sortie
-
-```
-Import_EdJad.csv
+```php
+$weekdays = array_map(
+    static fn (int $n): int => ($n % 7) + 1,
+    $weekdays
+);
 ```
 
-> ⚠️ Fichier **INTERMÉDIAIRE** uniquement
+👉 **On enlève ça complètement.**
 
----
+Le controller doit juste faire :
 
-## 2.3 Consolidation personnes & structure – processRefog
-
-### Entrées
-
-* Personne.csv
-* PersonneDesact.csv
-* UO.csv
-* UOHierarchique.csv
-* Immeuble.csv
-* Filiere / SousFiliere
-
----
-
-### 2.3.1 Séparation des flux personnes
-
-#### Personnes actives (VISIBLE = 1)
-
-* Jointure avec :
-
-  * Immeubles
-  * UO
-  * Hiérarchies
-  * Filières
-
-➡️ Produit :
-
-```
-ImportRefog.csv (snapshot intermédiaire)
+```php
+$weekdays = array_map(
+    'intval',
+    $request->query->all('weekdays') ?? []
+);
 ```
 
+Et basta.
+
 ---
 
-#### Personnes désactivées (VISIBLE = 0)
+## 4️⃣ Où on filtre maintenant les weekdays (le bon endroit)
+
+👉 **Dans le Handler**, pas ailleurs.
+
+Rappel :
+
+* Repository → données brutes
+* Handler → logique métier
+
+---
+
+## 5️⃣ Correction du Handler (ISO, 0-based, propre)
+
+📍 **Fichier**
 
 ```
-PersonneDesact.csv
-        │
-        ▼
-PersonneDesactTmp.csv   (état absolu du jour)
-        │
-        │ comparaison
-        ▼
-ImportRefogDesactVieille.csv (état J-1)
-        │
-        ▼
-ImportRefogDesact.csv   (DELTA uniquement)
+src/Application/Admin/UseCase/GetActiveUsersByPoleOverTimeHandler.php
 ```
 
-➡️ **Flux événementiel séparé**
+### 5.1 Génération des dates (ISO, lundi = 0)
 
----
+Remplace la génération actuelle par **celle-ci** :
 
-## 2.4 Jointure finale EdJad → Refog
+```php
+$dates = [];
+$cursor = $query->from;
 
-### Entrées
+while ($cursor <= $query->to) {
+    // ISO weekday: Monday = 0, Sunday = 6
+    $weekday = ((int) $cursor->format('N')) - 1;
 
-* ImportRefog.csv (intermédiaire)
-* Import_EdJad.csv
+    if (
+        empty($query->weekdays)
+        || in_array($weekday, $query->weekdays, true)
+    ) {
+        $dates[] = $cursor->format('Y-m-d');
+    }
 
-### Traitements
-
-* Suppression des entêtes
-* Tri par UID
-* Jointure :
-
-  * 1 personne Refog
-  * * données métier EdJad
-
-### Sortie
-
-```
-ImportRefog.csv (FINAL, enrichi métier)
+    $cursor = $cursor->modify('+1 day');
+}
 ```
 
----
+👉 Maintenant :
 
-## 2.5 Nettoyage
-
-### cleanupFiles
-
-* Supprime tous les fichiers intermédiaires
-* Conserve uniquement :
-
-  * ImportRefog.csv
-  * ImportRefogDesact.csv
-  * ImportRefogDesactVieille.csv
-  * scripts .sh
+* UI envoie `weekdays[]=0` → lundi
+* Handler comprend `0` → lundi
+* aucune conversion
+* aucune ambiguïté
 
 ---
 
-## 3. Fichiers finaux réellement utilisés
+## 6️⃣ Et le repository dans tout ça ?
 
-| Fichier                      | Rôle                   | Nature             |
-| ---------------------------- | ---------------------- | ------------------ |
-| ImportRefog.csv              | Import principal ReFOG | Snapshot enrichi   |
-| ImportRefogDesact.csv        | Désactivations         | Delta événementiel |
-| ImportRefogDesactVieille.csv | Mémoire                | État cumulatif     |
+Il reste **inchangé** (et c’est une bonne chose).
 
-`Import_EdJad.csv` **n’existe plus à la fin**.
+Il retourne :
 
----
+```php
+day (Y-m-d)
+pole (string)
+active_users
+```
 
-## 4. Modèle conceptuel sous-jacent
-
-* Snapshot = état courant
-* Delta = événement unique
-* OLD = mémoire persistante
-
-Implémenté :
-
-* sans base
-* sans ETL
-* sans API
-* uniquement par fichiers
+Le handler décide **quoi garder**, **quoi ignorer**.
 
 ---
 
-## 5. Phrase de clôture
+## 7️⃣ Format `weekdays[]` vs `weekdays=0,1,2`
 
-> Ce script n’est pas un simple batch.
-> C’est un **ETL complet déguisé en shell**, avec état, événements et projections.
+Tu as aussi raison là-dessus.
 
-Fin du diagramme complet.
+### Ce que tu fais déjà (et qui est très bien) :
+
+```
+?weekdays[]=0&weekdays[]=1
+```
+
+Symfony :
+
+```php
+$request->query->all('weekdays') // [0, 1]
+```
+
+👉 **C’est le format recommandé.**
+👉 Pas de CSV.
+👉 Pas de parsing manuel.
+👉 Aucun changement à faire.
+
+---
+
+## 8️⃣ Résumé clair (à garder en tête)
+
+* ✔️ **Convention unique** : lundi = 0
+* ✔️ UI, Controller, Handler alignés
+* ✔️ Repository ignorant des weekdays
+* ✔️ Aucune fonction SQL fragile
+* ✔️ Aucune conversion “magique”
+
+Tu viens de faire un **vrai choix d’architecture**, pas un patch.
+
+---
+
+## 9️⃣ Ce que tu fais maintenant
+
+1. Supprime toute conversion weekday dans le controller
+2. Mets le filtrage ISO (0-based) **dans le handler**
+3. Recharge :
+
+```
+/admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-25&weekdays[]=0
+```
+
+👉 Si tu vois que seuls les lundis sortent → 🎯 gagné
+👉 Ensuite → **ECharts**
+
+Dis-moi quand le JSON est bon.
+Après ça, on passe au visuel, et là tu vas enfin respirer.
