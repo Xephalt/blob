@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transformation du CSV Personne – Flux JoinFiles</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #1a5490;
+            border-bottom: 4px solid #1a5490;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+            font-size: 2.2em;
+        }
+        
+        h2 {
+            color: #2980b9;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+            border-left: 5px solid #2980b9;
+            padding-left: 15px;
+        }
+        
+        h3 {
+            color: #3498db;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        h4 {
+            color: #2980b9;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .intro {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 4px solid #3498db;
+        }
+        
+        ul, ol {
+            margin-left: 25px;
+            margin-bottom: 20px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+        }
+        
+        .diagram {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            overflow-x: auto;
+            border: 1px solid #ddd;
+            font-family: 'Courier New', monospace;
+            white-space: pre;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        
+        .csv-table {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            overflow-x: auto;
+            border: 1px solid #ddd;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        
+        .csv-table pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .highlight-box {
+            background: #fff3cd;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .warning {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .warning::before {
+            content: "⚠️ ";
+            font-weight: bold;
+        }
+        
+        .success-box {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .success-box::before {
+            content: "✓ ";
+            color: #4caf50;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        th {
+            background: #2980b9;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #ecf0f1;
+            font-size: 0.9em;
+        }
+        
+        tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        tr:hover {
+            background: #e3f2fd;
+        }
+        
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+        }
+        
+        .arrow {
+            text-align: center;
+            color: #2980b9;
+            font-weight: bold;
+            margin: 20px 0;
+            font-size: 1.5em;
+        }
+        
+        .section-block {
+            background: #f0f4f8;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 5px solid #3498db;
+        }
+        
+        .flow-step {
+            background: #fff;
+            border: 2px solid #2980b9;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .flow-step h3 {
+            margin-top: 0;
+            color: #1a5490;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #ecf0f1;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        
+        blockquote {
+            border-left: 4px solid #3498db;
+            padding-left: 20px;
+            margin: 20px 0;
+            font-style: italic;
+            color: #555;
+        }
+        
+        .data-flow {
+            background: #fafafa;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+        
+        .split-container {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .split-container > div {
+            flex: 1;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .split-container h4 {
+            margin-top: 0;
+            color: #1a5490;
+        }
+        
+        @media (max-width: 768px) {
+            .split-container {
+                flex-direction: column;
+            }
+        }
+        
+        .key-transformation {
+            background: #fffde7;
+            border: 2px dashed #fbc02d;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        
+        .key-transformation strong {
+            color: #f57f17;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Transformation du CSV Personne – Flux JoinFiles</h1>
+        
+        <div class="intro">
+            <p>Ce document suit <strong>étape par étape</strong> la transformation d'une personne depuis le fichier source <code>Personne.csv</code> jusqu'aux fichiers finaux.</p>
+            <p style="margin-top: 15px;">Il illustre les <strong>deux flux distincts</strong> :</p>
+            <ul>
+                <li><strong>Personne active</strong> (VISIBLE = 1) → enrichissement complet</li>
+                <li><strong>Personne désactivée</strong> (VISIBLE = 0) → delta d'événement</li>
+            </ul>
+        </div>
+        
+        <h2>1. Point de départ – Personne.csv</h2>
+        
+        <div class="flow-step">
+            <h3>Structure initiale</h3>
+            
+            <p><strong>Source :</strong> Fichier déchiffré de <code>Personne.csv.gpg</code></p>
+            
+            <div class="csv-table">
+                <pre>uid,nom,prenom,mail,telephone,VISIBLE,idUO,idImmeuble,matricule
+UID001,Martin,Alice,alice.martin@co.fr,+33123456789,1,UO_RH,IMM_001,MAT_001
+UID002,Bernard,Bob,bob.bernard@co.fr,+33123456790,0,UO_IT,IMM_002,MAT_002
+UID003,Durand,Clara,clara.durand@co.fr,+33123456791,1,UO_FIN,IMM_001,MAT_003</pre>
+            </div>
+            
+            <div class="info-box">
+                <strong>Colonnes essentielles pour le flux :</strong>
+                <ul>
+                    <li><code>uid</code> → identifiant unique, clé de jointure</li>
+                    <li><code>VISIBLE</code> → détermine le flux (1=actif, 0=désactivé)</li>
+                    <li><code>idUO</code> → jointure avec UO.csv</li>
+                    <li><code>idImmeuble</code> → jointure avec Immeuble.csv</li>
+                    <li>autres colonnes → enrichissements métier</li>
+                </ul>
+            </div>
+        </div>
+        
+        <h2>2. Bifurcation – processRefog</h2>
+        
+        <p>Lors du traitement dans <code>processRefog</code>, les personnes sont séparées selon <code>VISIBLE</code> :</p>
+        
+        <div class="diagram">
+Personne.csv
+        │
+        ├─── WHERE VISIBLE = 1 ──▶ Personnes actives
+        │
+        └─── WHERE VISIBLE = 0 ──▶ Personnes désactivées</div>
+        
+        <h3>2.1 Flux ACTIF (VISIBLE = 1)</h3>
+        
+        <div class="flow-step">
+            <h3>Enrichissement avec structure organisationnelle</h3>
+            
+            <p>Les personnes actives sont enrichies avec :</p>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>Jointure</th>
+                        <th>Colonnes apportées</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>UO.csv</td>
+                        <td>idUO = uid</td>
+                        <td>nomUO, codeUO, responsableUO</td>
+                    </tr>
+                    <tr>
+                        <td>UOHierarchique.csv</td>
+                        <td>idUO</td>
+                        <td>hierarchie_path, parent_UO</td>
+                    </tr>
+                    <tr>
+                        <td>Immeuble.csv</td>
+                        <td>idImmeuble = uid</td>
+                        <td>nomImmeuble, ville, codePostal, adresse</td>
+                    </tr>
+                    <tr>
+                        <td>Filiere.csv + SousFiliere.csv</td>
+                        <td>idFiliere</td>
+                        <td>nomFiliere, nomSousFiliere, domaine</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div class="key-transformation">
+                <strong>Résultat intermédiaire :</strong> Une personne active passe de ~10 colonnes à ~25-30 colonnes enrichies
+            </div>
+            
+            <div class="data-flow">
+                <strong>Exemple après enrichissement :</strong>
+UID001,Martin,Alice,alice.martin@co.fr,+33123456789,1,UO_RH,...
+   │
+   ├─ nomUO: "Ressources Humaines"
+   ├─ codeUO: "RH"
+   ├─ hierarchie_path: "Corp / Métier / RH"
+   ├─ nomImmeuble: "Immeuble Paris 8"
+   ├─ ville: "Paris"
+   ├─ nomFiliere: "Management"
+   └─ nomSousFiliere: "Management RH"
+            </div>
+            
+            <div class="highlight-box">
+                <strong>Sortie :</strong> <code>ImportRefog.csv</code> (intermédiaire)
+            </div>
+        </div>
+        
+        <h3>2.2 Flux DÉSACTIVÉ (VISIBLE = 0)</h3>
+        
+        <div class="flow-step">
+            <h3>Gestion du delta de désactivation</h3>
+            
+            <p><strong>Les personnes désactivées NE sont PAS enrichies avec EdJad.</strong> Elles suivent un flux événementiel distinct :</p>
+            
+            <div class="diagram">
+PersonneDesact.csv                    (J = aujourd'hui)
+        │
+        ▼
+PersonneDesactTmp.csv                (snapshot du jour)
+        │
+        ├─ Comparaison avec
+        │
+        ▼
+ImportRefogDesactVieille.csv          (J-1, état précédent)
+        │
+        │ Calcul du DELTA
+        │ (nouvelles désactivations = diff)
+        │
+        ▼
+ImportRefogDesact.csv                 (DELTA uniquement)</div>
+            
+            <div class="section-block">
+                <h4>Logique du delta</h4>
+                <ul>
+                    <li><strong>État du jour (Tmp) :</strong> Toutes les personnes avec VISIBLE = 0</li>
+                    <li><strong>État précédent (Vieille) :</strong> Snapshot de la veille stocké</li>
+                    <li><strong>Delta :</strong> Nouveaux uid absents du jour précédent</li>
+                </ul>
+            </div>
+            
+            <div class="data-flow">
+                <strong>Exemple logique :</strong>
+                
+Jour J-1: UID002, UID005 (désactivés hier)
+Jour J:  UID002, UID005, UID008 (désactivés aujourd'hui)
+
+ImportRefogDesact.csv (J) = {UID008} ← NOUVEAU
+            </div>
+            
+            <div class="success-box">
+                <strong>Sortie :</strong> <code>ImportRefogDesact.csv</code> (événement pur)
+            </div>
+        </div>
+        
+        <h2>3. Enrichissement métier EdJad</h2>
+        
+        <div class="flow-step">
+            <h3>Uniquement pour les personnes ACTIVES</h3>
+            
+            <p><strong>Parallèlement</strong> au flux Refog, <code>processEdjad</code> enrichit les données RH :</p>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>Contenu</th>
+                        <th>Jointure</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>EMPLOYEE_RTL.csv (EDGAHR)</td>
+                        <td>Données RH normalisées</td>
+                        <td>matricule</td>
+                    </tr>
+                    <tr>
+                        <td>JAD_JL.csv (JAD)</td>
+                        <td>Nomenclature RH : Domaine, Famille, Emploi, Position</td>
+                        <td>codeJAD</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div class="data-flow">
+                <strong>Extraction JAD pour UID001 :</strong>
+                
+Domaine: "IT"
+Famille: "Développement"
+Emploi: "Développeur Full Stack"
+Position: "Sénior"
+
+Libellés multilingues :
+FR_Emploi: "Développeur Full Stack"
+EN_Emploi: "Full Stack Developer"
+            </div>
+            
+            <div class="highlight-box">
+                <strong>Sortie :</strong> <code>Import_EdJad.csv</code> (intermédiaire, par uid)
+            </div>
+        </div>
+        
+        <h2>4. Jointure finale – joinEdjadToRefog</h2>
+        
+        <div class="flow-step">
+            <h3>Fusion des deux flux pour les actifs</h3>
+            
+            <div class="diagram">
+ImportRefog.csv (intermédiaire, actifs enrichis structure)
+        │
+        ├─ [UID001, Alice, Paris 8, RH, Management RH, ...]
+        │
+        ▼ JOIN sur uid
+        │
+Import_EdJad.csv (actifs enrichis métier RH)
+        │
+        ├─ [UID001, IT, Développement, Dev Full Stack, FR/EN, ...]
+        │
+        ▼ FUSION par uid
+        │
+ImportRefog.csv (FINAL, enrichi structures + métier)
+        │
+        ├─ [UID001, Alice, Paris 8, RH, Management RH, IT, Développement, 
+        │           Dev Full Stack, Sénior, FR/EN labels, ...]</div>
+            
+            <div class="key-transformation">
+                <strong>Exemple ligne finale :</strong>
+                
+uid: UID001
+nom: Martin
+prenom: Alice
+mail: alice.martin@co.fr
+VISIBLE: 1
+nomUO: Ressources Humaines
+codeUO: RH
+nomImmeuble: Immeuble Paris 8
+ville: Paris
+codePostal: 75008
+nomFiliere: Management
+domaine_JAD: IT
+famille_JAD: Développement
+emploi_JAD: Développeur Full Stack
+position_JAD: Sénior
+emploi_FR: Développeur Full Stack
+emploi_EN: Full Stack Developer
+...
+            </div>
+            
+            <div class="success-box">
+                <strong>Sortie FINALE :</strong> <code>ImportRefog.csv</code> (enrichi complet)
+            </div>
+        </div>
+        
+        <h2>5. Nettoyage – cleanupFiles</h2>
+        
+        <div class="section-block">
+            <h4>Fichiers supprimés</h4>
+            <ul>
+                <li>Import_EdJad.csv ✗ (intermédiaire, consommé)</li>
+                <li>ImportRefog.csv (intermédiaire) ✗ (remplacé par la version FINAL)</li>
+                <li>PersonneDesactTmp.csv ✗ (snapshot temporaire)</li>
+                <li>Tous les CSV sources clairs ✗ (Personne.csv, UO.csv, etc.)</li>
+            </ul>
+            
+            <h4 style="margin-top: 20px;">Fichiers conservés</h4>
+            <ul>
+                <li><code>ImportRefog.csv</code> ✓ (FINAL, enrichi, utilisable)</li>
+                <li><code>ImportRefogDesact.csv</code> ✓ (deltas, historique)</li>
+                <li><code>ImportRefogDesactVieille.csv</code> ✓ (état cumulatif, référence)</li>
+            </ul>
+        </div>
+        
+        <h2>6. Résumé – Trajet d'une personne</h2>
+        
+        <h3>Cas 1 : Personne ACTIVE (VISIBLE = 1)</h3>
+        
+        <div class="split-container">
+            <div>
+                <h4>Flux Refog (structure)</h4>
+                <ul>
+                    <li>Extraction de Personne.csv</li>
+                    <li>Jointures UO, Immeuble, Filière</li>
+                    <li>→ ImportRefog.csv (intermédiaire)</li>
+                </ul>
+            </div>
+            <div>
+                <h4>Flux EdJad (métier)</h4>
+                <ul>
+                    <li>Extraction de EDGAHR + JAD</li>
+                    <li>Normalisation codes RH</li>
+                    <li>→ Import_EdJad.csv (intermédiaire)</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="arrow">▼</div>
+        
+        <div class="success-box">
+            <strong>Fusion :</strong> ImportRefog.csv (FINAL) = Refog + EdJad
+            <br>→ Personne enrichie de structure ET métier RH
+        </div>
+        
+        <h3>Cas 2 : Personne DÉSACTIVÉE (VISIBLE = 0)</h3>
+        
+        <div class="section-block">
+            <ul>
+                <li>Extraction de PersonneDesact.csv (état du jour)</li>
+                <li>Comparaison avec ImportRefogDesactVieille.csv (état J-1)</li>
+                <li>→ ImportRefogDesact.csv = DELTA uniquement</li>
+                <li>Mis à jour : ImportRefogDesactVieille.csv = nouvel état</li>
+            </ul>
+        </div>
+        
+        <h2>7. État final en base/système</h2>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Fichier</th>
+                    <th>Contient</th>
+                    <th>Utilisé par</th>
+                    <th>Fréquence</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>ImportRefog.csv</code></td>
+                    <td>Snapshot complet du jour : toutes les personnes actives enrichies</td>
+                    <td>Système ReFOG, rapports, syncs</td>
+                    <td>Quotidien (remplacement complet)</td>
+                </tr>
+                <tr>
+                    <td><code>ImportRefogDesact.csv</code></td>
+                    <td>Delta : SEULES les nouvelles désactivations</td>
+                    <td>Système ReFOG (événements)</td>
+                    <td>Quotidien (ajout incrémental)</td>
+                </tr>
+                <tr>
+                    <td><code>ImportRefogDesactVieille.csv</code></td>
+                    <td>État cumulatif des désactivations (mémoire persistante)</td>
+                    <td>Moteur de diff, archivage</td>
+                    <td>Quotidien (mise à jour)</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h2>8. Points clés</h2>
+        
+        <div class="key-transformation">
+            <strong>✓ Les personnes actives sont COMPLÈTEMENT enrichies :</strong> structures (UO, Immeuble, Filière) + métier RH (domaine, famille, emploi, position, labels)
+            <br><br>
+            <strong>✗ Les personnes désactivées ne passent PAS par EdJad :</strong> elles produisent un delta d'événement pur, pas une projection enrichie
+            <br><br>
+            <strong>✓ Snapshot vs Delta séparation intentionnelle :</strong> ImportRefog = état courant complet; ImportRefogDesact = événements uniquement
+            <br><br>
+            <strong>✓ Import_EdJad n'existe qu'en transit :</strong> créé, consommé, puis détruit
+        </div>
+        
+        <div class="footer">
+            <p>Document complémentaire à « Diagramme complet – Flux JoinFiles »</p>
+            <p style="margin-top: 5px; color: #95a5a6;">Suivi détaillé de la transformation d'une personne dans le pipeline ETL</p>
+        </div>
+    </div>
+</body>
+</html>
