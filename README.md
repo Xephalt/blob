@@ -1,295 +1,194 @@
-Bon. On continue alors. Range le café, ça va être précis.
+Parfait. L’enthousiasme est noté. Profitons-en avant qu’il ne soit écrasé par Symfony.
 
-👉 **Étape 2 uniquement dans ce message**
-👉 **Application / Admin**
-👉 **Query + Handler + DTOs**
-👉 **AUCUN controller, AUCUN front, AUCUN ECharts**
-
-On transforme maintenant **des faits bruts** (repository) en **données métier exploitables**.
+👉 **Étape 3 uniquement**
+👉 **Controller KPI + route HTTP**
+👉 **Objectif unique : taper une URL et voir du JSON propre**
+👉 **Toujours zéro ECharts, zéro front**
 
 ---
 
-# 🥈 ÉTAPE 2 — Use case Clean Architecture
+# 🥉 ÉTAPE 3 — Endpoint HTTP (KPI Controller)
 
 ## Objectif
 
-Construire **le use case applicatif** :
+Brancher ton **use case applicatif** sur le monde réel, sans le polluer.
 
-> “Obtenir, pour une période et des weekdays donnés,
-> le pourcentage d’utilisateurs actifs par pôle et par jour.”
+À la fin de cette étape, tu pourras appeler une URL du genre :
 
-Le repository sait compter.
-Le use case sait **interpréter**.
+```
+/admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-25&weekdays[]=1&weekdays[]=2
+```
+
+et voir un JSON exploitable.
 
 ---
 
-## 1️⃣ La Query (entrée du use case)
+## 1️⃣ Où ajouter la route
 
-📍 **Fichier à créer**
+Tu as déjà un **KPI controller existant**.
+Typiquement chez toi :
 
 ```
-src/Application/Admin/Query/ActiveUsersByPoleOverTimeQuery.php
+src/Controller/Admin/KpiController.php
 ```
 
-### Contenu
+(on ne crée PAS un nouveau controller pour ça, sinon c’est du zèle inutile)
+
+---
+
+## 2️⃣ Méthode à ajouter dans le controller
+
+👉 **Tu ajoutes UNE méthode**, rien d’autre.
+👉 Tu n’édites pas les routes existantes.
+
+### Code à copier-coller
 
 ```php
 <?php
 
-namespace App\Application\Admin\Query;
+namespace App\Controller\Admin;
 
-final class ActiveUsersByPoleOverTimeQuery
+use App\Application\Admin\Query\ActiveUsersByPoleOverTimeQuery;
+use App\Application\Admin\UseCase\GetActiveUsersByPoleOverTimeHandler;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Annotation\Route;
+
+class KpiController extends AbstractController
 {
-    /**
-     * @param int[] $weekdays
-     */
-    public function __construct(
-        public readonly \DateTimeImmutable $from,
-        public readonly \DateTimeImmutable $to,
-        public readonly array $weekdays = []
-    ) {}
+    #[Route(
+        '/admin/kpi/active-users-by-pole',
+        name: 'admin_kpi_active_users_by_pole',
+        methods: ['GET']
+    )]
+    public function activeUsersByPoleOverTime(
+        Request $request,
+        GetActiveUsersByPoleOverTimeHandler $handler
+    ): JsonResponse {
+        $from = new \DateTimeImmutable($request->query->get('from'));
+        $to = new \DateTimeImmutable($request->query->get('to'));
+
+        /** @var int[] $weekdays */
+        $weekdays = array_map(
+            'intval',
+            $request->query->all('weekdays') ?? []
+        );
+
+        $query = new ActiveUsersByPoleOverTimeQuery(
+            from: $from,
+            to: $to,
+            weekdays: $weekdays
+        );
+
+        $result = $handler($query);
+
+        return $this->json($result);
+    }
 }
 ```
 
-✔️ La Query est **immuable**
-✔️ Elle décrit l’intention, pas l’implémentation
-✔️ Aucun lien avec HTTP ou Doctrine
-
 ---
 
-## 2️⃣ Les DTOs de sortie (orientés graphique)
+## 3️⃣ Pourquoi ce controller est “propre”
 
-On prépare **exactement** ce dont le front aura besoin.
+Regarde bien ce qu’il **ne fait pas** :
+
+* ❌ aucun calcul
+* ❌ aucune logique métier
+* ❌ aucun accès repository
+* ❌ aucun `if` métier
+
+Il fait **strictement** :
+
+* HTTP → Query
+* Query → Handler
+* Handler → JSON
+
+C’est exactement le rôle d’un controller en Clean Architecture.
 Pas plus. Pas moins.
 
 ---
 
-### 📍 DTO racine
+## 4️⃣ À quoi doit ressembler le JSON retourné
 
-```
-src/Application/Admin/Dto/ActiveUsersByPoleChartDto.php
-```
+Quand tout est branché correctement, tu dois voir un JSON du genre :
 
-```php
-<?php
-
-namespace App\Application\Admin\Dto;
-
-final class ActiveUsersByPoleChartDto
+```json
 {
-    /**
-     * @param string[] $dates
-     * @param PoleSeriesDto[] $series
-     */
-    public function __construct(
-        public readonly array $dates,
-        public readonly array $series
-    ) {}
-}
-```
-
----
-
-### 📍 Série par pôle
-
-```
-src/Application/Admin/Dto/PoleSeriesDto.php
-```
-
-```php
-<?php
-
-namespace App\Application\Admin\Dto;
-
-final class PoleSeriesDto
-{
-    /**
-     * @param float[] $values
-     */
-    public function __construct(
-        public readonly string $poleName,
-        public readonly array $values
-    ) {}
-}
-```
-
-✔️ Le front pourra activer/désactiver une série
-✔️ Les valeurs sont **déjà en pourcentage**
-
----
-
-## 3️⃣ Extension minimale du UserRepository (lecture seule)
-
-Le use case a besoin du **dénominateur**.
-
-### 📍 Interface à compléter
-
-```
-src/Repository/UserRepository.php
-```
-
-👉 **Ajoute cette méthode** (sans casser l’existant) :
-
-```php
-/**
- * @return array<int, int> poleId => totalUsers
- */
-public function countUsersByPole(): array;
-```
-
-### 👉 Implémentation Doctrine (à ajouter)
-
-```php
-public function countUsersByPole(): array
-{
-    $qb = $this->createQueryBuilder('u')
-        ->select('p.id AS pole_id', 'COUNT(u.id) AS total_users')
-        ->join('u.pole', 'p')
-        ->groupBy('p.id');
-
-    $results = $qb->getQuery()->getArrayResult();
-
-    $counts = [];
-    foreach ($results as $row) {
-        $counts[(int) $row['pole_id']] = (int) $row['total_users'];
+  "dates": [
+    "2026-01-02",
+    "2026-01-03",
+    "2026-01-04"
+  ],
+  "series": [
+    {
+      "poleName": "Groupe Communication",
+      "values": [42.86, 38.12, 51.03]
+    },
+    {
+      "poleName": "IPS Cardiff",
+      "values": [21.45, 19.02, 23.88]
     }
-
-    return $counts;
+  ]
 }
 ```
 
-✔️ Toujours brut
-✔️ Pas de logique métier
-✔️ Pas de pourcentage
+👉 **Exactement** ce qu’ECharts attend plus tard
+👉 Aucun retraitement JS nécessaire
 
 ---
 
-## 4️⃣ Le Handler (le cœur du sujet)
+## 5️⃣ Test immédiat (à faire maintenant)
 
-📍 **Fichier à créer**
+Dans ton navigateur ou via curl :
 
 ```
-src/Application/Admin/UseCase/GetActiveUsersByPoleOverTimeHandler.php
+/admin/kpi/active-users-by-pole
+    ?from=2026-01-01
+    &to=2026-01-25
 ```
 
----
+Puis avec weekdays :
 
-### Contenu complet
-
-```php
-<?php
-
-namespace App\Application\Admin\UseCase;
-
-use App\Application\Admin\Query\ActiveUsersByPoleOverTimeQuery;
-use App\Application\Admin\Dto\ActiveUsersByPoleChartDto;
-use App\Application\Admin\Dto\PoleSeriesDto;
-use App\Repository\MessageRepository;
-use App\Repository\UserRepository;
-use App\Repository\PoleRepository;
-
-final class GetActiveUsersByPoleOverTimeHandler
-{
-    public function __construct(
-        private MessageRepository $messageRepository,
-        private UserRepository $userRepository,
-        private PoleRepository $poleRepository
-    ) {}
-
-    public function __invoke(
-        ActiveUsersByPoleOverTimeQuery $query
-    ): ActiveUsersByPoleChartDto {
-        // 1. Générer la liste complète des dates filtrées
-        $dates = [];
-        $cursor = $query->from;
-
-        while ($cursor <= $query->to) {
-            if (
-                empty($query->weekdays)
-                || in_array((int) $cursor->format('N'), $query->weekdays, true)
-            ) {
-                $dates[] = $cursor->format('Y-m-d');
-            }
-            $cursor = $cursor->modify('+1 day');
-        }
-
-        // 2. Récupération des données brutes
-        $activeByDayAndPole =
-            $this->messageRepository->countActiveUsersPerDayByPole(
-                $query->from,
-                $query->to,
-                $query->weekdays
-            );
-
-        $totalUsersByPole = $this->userRepository->countUsersByPole();
-
-        // 3. Indexation [poleId][day] => activeUsers
-        $indexed = [];
-        foreach ($activeByDayAndPole as $row) {
-            $indexed[(int) $row['pole_id']][$row['day']] =
-                (int) $row['active_users'];
-        }
-
-        // 4. Construction des séries
-        $series = [];
-
-        foreach ($totalUsersByPole as $poleId => $totalUsers) {
-            if ($totalUsers === 0) {
-                continue;
-            }
-
-            $pole = $this->poleRepository->find($poleId);
-            if (!$pole) {
-                continue;
-            }
-
-            $values = [];
-            foreach ($dates as $day) {
-                $active = $indexed[$poleId][$day] ?? 0;
-                $values[] = round(($active / $totalUsers) * 100, 2);
-            }
-
-            $series[] = new PoleSeriesDto(
-                poleName: $pole->getName(),
-                values: $values
-            );
-        }
-
-        return new ActiveUsersByPoleChartDto(
-            dates: $dates,
-            series: $series
-        );
-    }
-}
+```
+/admin/kpi/active-users-by-pole
+    ?from=2026-01-01
+    &to=2026-01-25
+    &weekdays[]=1
+    &weekdays[]=2
+    &weekdays[]=3
 ```
 
----
+Si :
 
-## 5️⃣ Ce que tu as maintenant (important)
+* la route répond
+* le JSON est cohérent
+* aucune exception Doctrine
 
-✔️ Un use case **testable**
-✔️ Aucun couplage HTTP / Twig / JS
-✔️ Un DTO **directement consommable par ECharts**
-✔️ Une logique métier **centralisée et lisible**
+👉 alors ton **back est sain**.
 
 ---
 
 ## ✅ Ce que tu fais maintenant
 
-1. Créer **tous les fichiers ci-dessus**
-2. Vérifier que :
+1. Ajouter cette méthode au controller
+2. Tester l’URL
+3. Vérifier que :
 
-   * `PoleRepository` existe bien
-   * `User::pole` est mappé correctement
-3. Me dire **OK** quand c’est fait
+   * les dates sont alignées
+   * les séries ont toutes la même longueur
+4. Me dire **OK j’ai le JSON**
 
 ---
 
-👉 **Étape suivante (quand tu dis OK)**
-On ajoute :
+### 🔜 Étape suivante (la fun)
 
-* la **route dans ton KPI controller**
-* la **normalisation JSON**
-* puis **l’intégration ECharts côté front**
+👉 **ECharts côté front (Stimulus)**
 
-Un étage à la fois. Sinon on triche.
+* init du chart
+* mapping direct du DTO
+* toggle des séries par pôle
+
+Mais d’abord : **montre-moi ce JSON**.
+Sinon on construit un cockpit sans moteur.
