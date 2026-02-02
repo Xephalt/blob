@@ -1,124 +1,75 @@
-Oui, tu as **100 % raison**. Et ce n’est pas un “petit détail”, c’est exactement le genre de micro-incohérence qui pourrit un système si on la laisse passer. Bonne pioche.
+Tu as raison sur un point essentiel : **si ton contrat d’entrée est “1 = lundi”**, alors on arrête de jouer aux devinettes avec des mappings MySQL/JS/PHP. On prend **ISO (1..7, lundi..dimanche)** partout côté backend, point.
 
-Je vais être clair, puis te donner **la correction propre**, sans mapping chelou.
+Et oui : si tu envoies `weekdays=1,2` (CSV), Symfony te donne une **string**, alors que `weekdays[]=1&weekdays[]=2` donne un **array**. Donc si ton handler “expect array” et qu’il reçoit une string, il râle. Normal.
 
----
+On corrige ça **proprement** :
 
-## 1️⃣ Le vrai problème (et tu l’as identifié)
-
-Aujourd’hui, dans TON système :
-
-* **Stimulus / UI** envoie :
-
-  * `weekdays[]=0` → **lundi**
-  * `weekdays[]=1` → mardi
-  * …
-  * `weekdays[]=6` → dimanche
-
-👉 Donc **0-based, ISO-like, lundi = 0**
-
-Mais :
-
-* PHP `DateTime::format('N')` → **1 = lundi**
-* MySQL `DAYOFWEEK()` → **1 = dimanche**
-
-Bref : **trois conventions différentes**, et aucune n’est “mauvaise”, mais les mélanger est une erreur.
-
-👉 **Tu as raison : on ne doit PAS adapter l’UI à la DB.**
-👉 **On doit adapter le backend au contrat UI.**
+* **le handler doit normaliser** `weekdays` qu’il reçoive un array ou une string CSV
+* le filtrage doit comparer avec `DateTimeImmutable::format('N')` (ISO) directement
+* `1` doit sélectionner **lundi**, pas mercredi, pas une autre dimension mystique
 
 ---
 
-## 2️⃣ Décision Clean Architecture (la bonne)
+# ✅ Patch minimal à faire
 
-On fait ceci :
+## 1) Handler: normaliser weekdays (array OU CSV string)
 
-### ❌ On NE FAIT PLUS :
+📍 `src/Application/Admin/UseCase/GetActiveUsersByPoleOverTimeHandler.php`
 
-* `DAYOFWEEK()` en SQL
-* mapping ISO → MySQL
-* conversion “bizarre” dans le controller
-
-### ✅ On FAIT :
-
-* le **repository ne connaît PAS les weekdays**
-* le **handler filtre les jours en PHP**
-* les weekdays restent **0-based, lundi = 0**, partout
-
-👉 Résultat :
-
-* le front ne change pas
-* le controller ne bidouille pas
-* le repository reste simple
-* le handler porte la règle métier (logique)
-
-C’est **exactement** ce que la Clean Arch demande.
-
----
-
-## 3️⃣ Concrètement : ce qu’on change
-
-### 🔥 À SUPPRIMER (si ce n’est pas déjà fait)
-
-Dans le **controller** ❌ :
+Ajoute cette fonction privée dans la classe (en bas du fichier par exemple) :
 
 ```php
-$weekdays = array_map(
-    static fn (int $n): int => ($n % 7) + 1,
-    $weekdays
-);
+/**
+ * @return int[] ISO weekdays: 1=Mon ... 7=Sun
+ */
+private function normalizeIsoWeekdays(mixed $weekdays): array
+{
+    // Accept: [] | [1,2] | ["1","2"] | "1,2" | "1"
+    if ($weekdays === null || $weekdays === '' || $weekdays === []) {
+        return [];
+    }
+
+    $list = [];
+
+    if (is_string($weekdays)) {
+        $list = array_filter(array_map('trim', explode(',', $weekdays)), static fn($v) => $v !== '');
+    } elseif (is_array($weekdays)) {
+        $list = $weekdays;
+    } else {
+        // Unexpected type (object/int/etc.) => ignore
+        return [];
+    }
+
+    $ints = array_map('intval', $list);
+
+    // Keep only 1..7, unique, sorted (stable output)
+    $ints = array_values(array_unique(array_filter(
+        $ints,
+        static fn (int $n) => $n >= 1 && $n <= 7
+    )));
+    sort($ints);
+
+    return $ints;
+}
 ```
 
-👉 **On enlève ça complètement.**
-
-Le controller doit juste faire :
+Ensuite, dans `__invoke()`, **tout en haut**, normalise :
 
 ```php
-$weekdays = array_map(
-    'intval',
-    $request->query->all('weekdays') ?? []
-);
+$isoWeekdays = $this->normalizeIsoWeekdays($query->weekdays);
 ```
 
-Et basta.
-
----
-
-## 4️⃣ Où on filtre maintenant les weekdays (le bon endroit)
-
-👉 **Dans le Handler**, pas ailleurs.
-
-Rappel :
-
-* Repository → données brutes
-* Handler → logique métier
-
----
-
-## 5️⃣ Correction du Handler (ISO, 0-based, propre)
-
-📍 **Fichier**
-
-```
-src/Application/Admin/UseCase/GetActiveUsersByPoleOverTimeHandler.php
-```
-
-### 5.1 Génération des dates (ISO, lundi = 0)
-
-Remplace la génération actuelle par **celle-ci** :
+Puis remplace ta génération de dates par une version ISO simple :
 
 ```php
 $dates = [];
 $cursor = $query->from;
 
 while ($cursor <= $query->to) {
-    // ISO weekday: Monday = 0, Sunday = 6
-    $weekday = ((int) $cursor->format('N')) - 1;
+    // ISO: 1=Mon ... 7=Sun
+    $weekdayIso = (int) $cursor->format('N');
 
-    if (
-        empty($query->weekdays)
-        || in_array($weekday, $query->weekdays, true)
-    ) {
+    if (empty($isoWeekdays) || in_array($weekdayIso, $isoWeekdays, true)) {
         $dates[] = $cursor->format('Y-m-d');
     }
 
@@ -126,78 +77,59 @@ while ($cursor <= $query->to) {
 }
 ```
 
-👉 Maintenant :
-
-* UI envoie `weekdays[]=0` → lundi
-* Handler comprend `0` → lundi
-* aucune conversion
-* aucune ambiguïté
+✅ Là, `weekdays=1` => **lundi**.
+✅ `weekdays=1,2` => **lundi + mardi**.
+✅ `weekdays[]=1&weekdays[]=2` marche pareil.
 
 ---
 
-## 6️⃣ Et le repository dans tout ça ?
+## 2) Controller: accepter CSV + array sans broncher
 
-Il reste **inchangé** (et c’est une bonne chose).
+Même si tu insistes pour “le handler doit s’adapter”, je te donne quand même le patch controller parce que c’est le bon endroit pour gérer les formats HTTP. Et ça ne casse rien.
 
-Il retourne :
+📍 `src/Controller/Admin/KpiController.php` (dans ta méthode de route KPI)
+
+Remplace ta lecture de weekdays par ça :
 
 ```php
-day (Y-m-d)
-pole (string)
-active_users
+$rawWeekdays = $request->query->all('weekdays');
+
+if ($rawWeekdays === []) {
+    // Support CSV: ?weekdays=1,2
+    $rawWeekdays = $request->query->get('weekdays', []);
+}
+
+$weekdays = is_array($rawWeekdays)
+    ? array_map('intval', $rawWeekdays)
+    : array_map('intval', array_filter(array_map('trim', explode(',', (string) $rawWeekdays))));
 ```
 
-Le handler décide **quoi garder**, **quoi ignorer**.
+Et tu passes `$weekdays` tel quel dans la Query.
 
 ---
 
-## 7️⃣ Format `weekdays[]` vs `weekdays=0,1,2`
+# Pourquoi tu voyais “mercredi” quand tu envoyais 1
 
-Tu as aussi raison là-dessus.
-
-### Ce que tu fais déjà (et qui est très bien) :
-
-```
-?weekdays[]=0&weekdays[]=1
-```
-
-Symfony :
-
-```php
-$request->query->all('weekdays') // [0, 1]
-```
-
-👉 **C’est le format recommandé.**
-👉 Pas de CSV.
-👉 Pas de parsing manuel.
-👉 Aucun changement à faire.
+Parce qu’à un moment, tu avais un mélange de conventions (0-based, ISO, MySQL `DAYOFWEEK`) et tu comparais des valeurs qui ne parlent pas le même langage. Résultat : `1` (lundi) finissait interprété comme autre chose. Maintenant on force **ISO (N)**, donc `1` est **toujours lundi**.
 
 ---
 
-## 8️⃣ Résumé clair (à garder en tête)
+# Ce que tu testes maintenant
 
-* ✔️ **Convention unique** : lundi = 0
-* ✔️ UI, Controller, Handler alignés
-* ✔️ Repository ignorant des weekdays
-* ✔️ Aucune fonction SQL fragile
-* ✔️ Aucune conversion “magique”
-
-Tu viens de faire un **vrai choix d’architecture**, pas un patch.
-
----
-
-## 9️⃣ Ce que tu fais maintenant
-
-1. Supprime toute conversion weekday dans le controller
-2. Mets le filtrage ISO (0-based) **dans le handler**
-3. Recharge :
+* CSV :
 
 ```
-/admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-25&weekdays[]=0
+/admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-31&weekdays=1
 ```
 
-👉 Si tu vois que seuls les lundis sortent → 🎯 gagné
-👉 Ensuite → **ECharts**
+Tu dois voir **uniquement les lundis** dans `dates`.
 
-Dis-moi quand le JSON est bon.
-Après ça, on passe au visuel, et là tu vas enfin respirer.
+* Array :
+
+```
+/admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-31&weekdays[]=1&weekdays[]=2
+```
+
+Tu dois voir **lundis + mardis**.
+
+Si après ça tu vois encore des mercredis, ce ne sera plus “un mapping”, ce sera un bug de construction des dates (et on le démonte, mais là on vient de verrouiller la convention ISO proprement).
