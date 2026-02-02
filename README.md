@@ -1,147 +1,196 @@
-Parfait. Là on est **exactement dans la continuité logique** de ce qu’on a fait. Et la réponse va être courte, claire, et sans surprise.
+Oui. Normal. Et même **prévisible**.
+Tu n’as rien cassé “par erreur”, tu as juste **fait évoluer la source de vérité** (string `u.pole`) sans encore **aligner le handler**. Donc le handler lit encore un monde qui n’existe plus. Doctrine n’y est pour rien cette fois.
+
+On corrige **une seule chose : le handler**. Rien d’autre.
 
 ---
 
-## 🎯 Pourquoi tu as encore cette erreur (et pourquoi c’est normal)
+# 🎯 Pourquoi tu as cette erreur
 
 Erreur :
 
-> `class App\Entity\User has no association named pole`
-
-Ça vient de **UserRepository::countUsersByPole()**.
-
-Et la raison est **strictement la même** que tout à l’heure :
-
-👉 **`user.pole` n’est PAS une association Doctrine**
-👉 **C’est une colonne `VARCHAR`**
-👉 Donc **`join('u.pole', ...)` est interdit**
-
-Doctrine ne “devine” jamais une relation à partir d’un nom de colonne.
-
----
-
-## 🧠 Rappel de la décision (celle que TU as prise, et qui est bonne)
-
-Tu as dit, et tu as raison :
-
-> 👉 *La source de vérité, c’est `user.pole` (string)*
-> 👉 *On ne s’appuie PAS sur la table `pole`*
-
-Donc **le repository doit faire pareil**.
-
----
-
-## ✅ Correction IMMÉDIATE : `countUsersByPole` → version string
-
-### ❌ Ce que tu as actuellement (probablement)
-
-```php
-->join('u.pole', 'p')
-->groupBy('p.id')
+```
+undefined array key "pole_id"
 ```
 
-❌ Faux, puisque `u.pole` n’est pas une relation.
+Dans :
+
+```php
+$indexed[(int) $row['pole_id']][$row['day']] = ...
+```
+
+👉 Or, **ton repository ne retourne PLUS `pole_id`**.
+Il retourne maintenant :
+
+```php
+[
+  'day' => '2026-01-02',
+  'pole' => 'Groupe Communication',
+  'active_users' => 42
+]
+```
+
+Donc :
+
+* ❌ `pole_id` n’existe plus
+* ❌ cast en `(int)` n’a plus aucun sens
+* ❌ le handler est encore en version “ID-based”
+
+On le passe en **string-based**, comme tu l’as décidé.
 
 ---
 
-### ✅ Ce qu’il faut FAIRE (et rien d’autre)
-
-👉 **On groupe directement sur la colonne string**
-
----
-
-## 🧩 Version CORRIGÉE de `countUsersByPole()`
+# ✅ Correction EXACTE du handler
 
 📍 **Fichier**
 
 ```
-src/Repository/UserRepository.php
+src/Application/Admin/UseCase/GetActiveUsersByPoleOverTimeHandler.php
 ```
 
-👉 **Remplace la méthode par celle-ci** :
+---
+
+## 1️⃣ Remplacer l’indexation (le cœur du bug)
+
+### ❌ Ancien code (à SUPPRIMER)
 
 ```php
-/**
- * @return array<string, int> poleLabel => totalUsers
- */
-public function countUsersByPole(): array
-{
-    $qb = $this->createQueryBuilder('u');
-
-    $qb
-        ->select(
-            'u.pole AS pole',
-            'COUNT(u.id) AS total_users'
-        )
-        ->where('u.pole IS NOT NULL')
-        ->groupBy('u.pole');
-
-    $results = $qb->getQuery()->getArrayResult();
-
-    $counts = [];
-    foreach ($results as $row) {
-        $counts[$row['pole']] = (int) $row['total_users'];
-    }
-
-    return $counts;
+$indexed = [];
+foreach ($activeByDayAndPole as $row) {
+    $indexed[(int) $row['pole_id']][$row['day']] =
+        (int) $row['active_users'];
 }
 ```
 
 ---
 
-## 📦 Format retourné (important pour le handler)
+### ✅ Nouveau code (ALIGNÉ avec `user.pole` string)
+
+👉 **Remplace par ceci** :
 
 ```php
-[
-  'Groupe Communication' => 123,
-  'IPS Cardiff' => 57,
-  'Marketing' => 89
-]
+$indexed = [];
+foreach ($activeByDayAndPole as $row) {
+    $pole = $row['pole'];        // STRING
+    $day = $row['day'];
+    $indexed[$pole][$day] = (int) $row['active_users'];
+}
 ```
 
-👉 Clé = **label du pôle**
-👉 Valeur = **nombre total d’utilisateurs**
+---
 
-Exactement ce dont on a besoin pour le calcul de pourcentage.
+## 2️⃣ Boucle de construction des séries (à adapter aussi)
+
+### ❌ Ancien code (ID-based)
+
+```php
+foreach ($totalUsersByPole as $poleId => $totalUsers) {
+    if ($totalUsers === 0) {
+        continue;
+    }
+
+    $values = [];
+    foreach ($dates as $day) {
+        $active = $indexed[$poleId][$day] ?? 0;
+        $values[] = round(($active / $totalUsers) * 100, 2);
+    }
+
+    $series[] = new PoleSeriesDto(
+        poleName: $pole->getName(),
+        values: $values
+    );
+}
+```
 
 ---
 
-## 🧠 Pourquoi c’est CLEAN malgré tout
+### ✅ Nouveau code (STRING-based, SIMPLE)
 
-* ✔️ Repository = faits bruts
-* ✔️ Pas de relation inventée
-* ✔️ Pas de join fragile
-* ✔️ Aligné avec MessageRepository
-* ✔️ Zéro incohérence interne
+👉 **Remplace entièrement la boucle par celle-ci** :
 
-Et surtout :
-👉 **Le handler ne sait PAS que c’est une string**
-👉 Il manipule juste des clés.
+```php
+$series = [];
+
+foreach ($totalUsersByPole as $poleLabel => $totalUsers) {
+    if ($totalUsers === 0) {
+        continue;
+    }
+
+    $values = [];
+    foreach ($dates as $day) {
+        $active = $indexed[$poleLabel][$day] ?? 0;
+        $values[] = round(($active / $totalUsers) * 100, 2);
+    }
+
+    $series[] = new PoleSeriesDto(
+        poleName: $poleLabel,
+        values: $values
+    );
+}
+```
+
+👉 Plus de `PoleRepository`
+👉 Plus de `find()`
+👉 Plus d’ID
+👉 Juste la string, comme voulu
 
 ---
 
-## ✅ Ce que tu fais maintenant (ordre strict)
+## 3️⃣ Résumé des changements (pour être sûr)
 
-1. Corrige `UserRepository::countUsersByPole()` comme ci-dessus
-2. Recharge l’URL :
+Tu as maintenant :
+
+### Repository
+
+* retourne `day`, `pole` (string), `active_users`
+
+### UserRepository
+
+* retourne `poleLabel => totalUsers`
+
+### Handler
+
+* indexe par **string**
+* calcule les %
+* expose `poleName` directement
+
+Tout est **cohérent**.
+
+---
+
+## ✅ Ce que tu fais maintenant
+
+1. Corrige le handler comme ci-dessus
+2. Recharge :
 
 ```
 /admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-25
 ```
 
-3. Si ça passe :
+3. Résultat attendu :
 
-   * 🎉 JSON
-4. Si ça casse :
+   * plus d’erreur PHP
+   * JSON avec :
 
-   * copie **l’erreur exacte**
+     ```json
+     {
+       "dates": [...],
+       "series": [
+         { "poleName": "Groupe Communication", "values": [...] },
+         { "poleName": "IPS Cardiff", "values": [...] }
+       ]
+     }
+     ```
 
 ---
 
-## 🔜 Prochaine étape (quand ça passe)
+## 🔜 Ensuite (et là c’est la récompense)
 
-👉 Adapter **le handler** (indexation par `poleLabel`)
-👉 Puis **ECharts** et tu verras enfin les courbes
+👉 **ECharts + Stimulus**
 
-Tu fais exactement ce qu’il faut.
-Ce n’est pas du bricolage, c’est du **pragmatisme maîtrisé**.
+* mapping direct du DTO
+* aucune transformation JS
+* juste du visuel
+
+Mais d’abord : **confirme-moi que le JSON sort**.
+On ne dessine pas tant que le moteur ne tourne pas.
