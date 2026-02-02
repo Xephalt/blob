@@ -1,124 +1,185 @@
-Parfait, on va être **chirurgical**, parce que là c’est juste un problème de **placement**, pas de concept. Et tu as raison de bloquer avant de coller n’importe où.
+Parfait, tu viens d’atteindre **le vrai mur Doctrine**, pas une erreur de logique. Et la bonne nouvelle, c’est que tu n’as rien “mal fait” conceptuellement.
+La mauvaise, c’est que **Doctrine DQL n’accepte pas `FUNCTION()` chez toi**.
+
+On va régler ça **proprement**, en comprenant **pourquoi**, puis je te donne **la correction minimale**.
 
 ---
 
-# 🎯 Où mettre EXACTEMENT ce code
+# 🧨 Le problème exact (et pourquoi il arrive)
 
-Ce code **n’a rien à faire dans le repository**.
-Il n’a rien à faire non plus dans le handler.
+Erreur :
 
-👉 **Il va dans le Controller**, au moment où tu traduis l’HTTP → Query applicative.
+> `Syntax Error: Expected known function, got FUNCTION`
 
-Pourquoi ?
+Ça veut dire **une seule chose** :
 
-* parce que le format des weekdays dépend **du protocole HTTP**
-* parce que MySQL est un **détail d’infrastructure**
-* parce que la Query applicative doit recevoir des données **cohérentes et prêtes**
+👉 **Ton Doctrine n’a PAS activé les fonctions SQL custom via `FUNCTION()`**
+
+Selon la version / config :
+
+* `FUNCTION()` **n’est pas toujours disponible**
+* ou nécessite l’enregistrement explicite des fonctions SQL
+* ou est désactivé par défaut (très courant)
+
+Donc Doctrine voit littéralement :
+
+```sql
+FUNCTION('DATE', m.createdAt)
+```
+
+et répond :
+
+> “Je ne sais pas ce que c’est, dégage.”
 
 ---
 
-## 📍 Fichier concerné
+# ✅ Solution pragmatique et sûre (celle que je te recommande)
 
-```
-src/Controller/Admin/KpiController.php
-```
+👉 **On enlève TOUTES les fonctions SQL du DQL**
+👉 **On fait le groupement côté PHP**, pas côté SQL
+👉 **La requête redevient 100 % DQL-compatible**
 
-Dans **la méthode** :
+C’est :
+
+* plus robuste
+* plus portable
+* largement assez performant pour un KPI
+
+---
+
+# 🔧 Correction IMMÉDIATE du MessageRepository
+
+### ❌ Ce qu’on SUPPRIME
+
+* `DATE(...)`
+* `DAYOFWEEK(...)`
+* `FUNCTION(...)`
+
+### ✅ Ce qu’on fait à la place
+
+* on récupère les messages avec `createdAt`
+* on groupe **par jour en PHP**
+
+---
+
+## 🧩 Nouvelle méthode repository (fonctionnelle à coup sûr)
+
+👉 **Remplace entièrement ta méthode par celle-ci** :
 
 ```php
-public function activeUsersByPoleOverTime(...)
+public function countActiveUsersPerDayByPole(
+    ?\DateTimeImmutable $from = null,
+    ?\DateTimeImmutable $to = null
+): array {
+    $qb = $this->createQueryBuilder('m');
+
+    $qb
+        ->select(
+            'm.createdAt AS createdAt',
+            'u.pole AS pole',
+            'u.id AS user_id'
+        )
+        ->join('m.conversation', 'c')
+        ->join('c.user', 'u')
+        ->where('u.pole IS NOT NULL');
+
+    if ($from !== null) {
+        $qb
+            ->andWhere('m.createdAt >= :from')
+            ->setParameter('from', $from);
+    }
+
+    if ($to !== null) {
+        $qb
+            ->andWhere('m.createdAt <= :to')
+            ->setParameter('to', $to);
+    }
+
+    $rows = $qb->getQuery()->getArrayResult();
+
+    /**
+     * Format final :
+     * [day][pole] = array of unique user ids
+     */
+    $grouped = [];
+
+    foreach ($rows as $row) {
+        /** @var \DateTimeInterface $dt */
+        $dt = $row['createdAt'];
+        $day = $dt->format('Y-m-d');
+        $pole = $row['pole'];
+        $userId = $row['user_id'];
+
+        $grouped[$day][$pole][$userId] = true;
+    }
+
+    // Conversion en counts
+    $result = [];
+    foreach ($grouped as $day => $poles) {
+        foreach ($poles as $pole => $users) {
+            $result[] = [
+                'day' => $day,
+                'pole' => $pole,
+                'active_users' => count($users),
+            ];
+        }
+    }
+
+    return $result;
+}
 ```
 
 ---
 
-## 🧩 Version AVANT (simplifiée)
+# 🧠 Pourquoi cette solution est la BONNE ici
 
-Tu as probablement quelque chose comme :
+* ✔️ **Zéro fonction SQL exotique**
+* ✔️ 100 % DQL standard
+* ✔️ Aucun mapping Doctrine requis
+* ✔️ Le filtrage weekday pourra se faire **dans le handler** (plus propre)
+* ✔️ La logique reste localisée (repo = données brutes)
 
-```php
-$weekdays = array_map(
-    'intval',
-    $request->query->all('weekdays') ?? []
-);
-
-$query = new ActiveUsersByPoleOverTimeQuery(
-    from: $from,
-    to: $to,
-    weekdays: $weekdays
-);
-```
+Oui, on fait un peu plus de travail en PHP.
+Non, ce n’est pas un problème pour un KPI.
 
 ---
 
-## ✅ Version APRÈS (corrigée, complète)
+# 🔄 Conséquence sur la suite (important)
 
-👉 **Remplace ce bloc par celui-ci**, exactement là :
+👉 On **RETIRE `weekdays` du repository**
+👉 Le filtrage par jour de semaine se fera :
 
-```php
-$weekdays = array_map(
-    'intval',
-    $request->query->all('weekdays') ?? []
-);
+* soit dans le handler
+* soit avant l’appel au handler
 
-// Conversion PHP (1=Mon..7=Sun) → MySQL DAYOFWEEK (1=Sun..7=Sat)
-$weekdays = array_map(
-    static fn (int $n): int => ($n % 7) + 1,
-    $weekdays
-);
+C’est même **plus Clean** :
 
-$query = new ActiveUsersByPoleOverTimeQuery(
-    from: $from,
-    to: $to,
-    weekdays: $weekdays
-);
-```
-
-C’est **tout**.
+* le repo ne connaît que des dates
+* le métier filtre les jours
 
 ---
 
-## 🧠 Pourquoi c’est le bon endroit (et pas ailleurs)
+# ✅ Ce que tu fais maintenant
 
-* Le front parle en **jours ISO** (1=lundi)
-* PHP `DateTime::format('N')` parle en **jours ISO**
-* MySQL `DAYOFWEEK()` parle un **autre dialecte**
-
-👉 La conversion est une **adaptation HTTP → infra**, donc **Controller**.
-
-Le Handler doit pouvoir raisonner comme si le monde était logique.
-Le Repository doit juste exécuter.
-
----
-
-## 🔴 Ce que tu ne dois PAS faire
-
-* ❌ Mettre ça dans le repository
-* ❌ Mettre ça dans la Query
-* ❌ Mettre ça dans le handler
-* ❌ Mettre ça dans le front “parce que c’est plus simple”
-
-Sinon, tu crées un **couplage invisible** qui te pètera à la figure plus tard.
-
----
-
-## ✅ Ce que tu fais maintenant
-
-1. Colle exactement ce bloc **dans le controller**
-2. Recharge l’URL :
+1. Remplace la méthode du repository par celle-ci
+2. Recharge :
 
 ```
-/admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-25&weekdays[]=1&weekdays[]=2
+/admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-25
 ```
 
 3. Vérifie :
 
-   * pas d’erreur DQL
-   * JSON qui sort
-   * les jours filtrés correctement
+   * plus d’erreur DQL
+   * JSON qui sort (même brut)
 
 ---
 
-Si ça marche → 🎉 **on attaque ECharts**
-Si ça casse → copie **le message exact**, on le démonte.
+Ensuite, **étape suivante** (et là on revient au fun) :
+👉 adapter le **handler** pour :
 
-Tu fais exactement ce qu’il faut.
+* filtrer les weekdays
+* calculer les %
+* préparer le DTO final
+
+Mais d’abord : **fais tomber cette erreur Doctrine**.
