@@ -1,135 +1,231 @@
-Tu as raison sur un point essentiel : **si ton contrat d’entrée est “1 = lundi”**, alors on arrête de jouer aux devinettes avec des mappings MySQL/JS/PHP. On prend **ISO (1..7, lundi..dimanche)** partout côté backend, point.
+Très bien. Là, on arrête les demi-patchs et les “ajustements mentaux”.
+Je te redonne **LA version canonique**, **cohérente**, **alignée avec TON contrat**, et **qui marche**.
 
-Et oui : si tu envoies `weekdays=1,2` (CSV), Symfony te donne une **string**, alors que `weekdays[]=1&weekdays[]=2` donne un **array**. Donc si ton handler “expect array” et qu’il reçoit une string, il râle. Normal.
+Objectifs verrouillés (ceux que TU as imposés, et ils sont bons) :
 
-On corrige ça **proprement** :
-
-* **le handler doit normaliser** `weekdays` qu’il reçoive un array ou une string CSV
-* le filtrage doit comparer avec `DateTimeImmutable::format('N')` (ISO) directement
-* `1` doit sélectionner **lundi**, pas mercredi, pas une autre dimension mystique
+* `weekdays` **ISO** : `1 = lundi … 7 = dimanche`
+* Accepté en **array** (`weekdays[]=1&weekdays[]=2`)
+* Accepté en **CSV** (`weekdays=1,2`)
+* **AUCUN mapping MySQL / DAYOFWEEK**
+* Le **repository ne connaît PAS les weekdays**
+* Le **handler filtre les dates**
+* Le **handler travaille en string `user.pole`**
+* Pas de `PoleRepository`
+* Pas de faux mapping Doctrine
 
 ---
 
-# ✅ Patch minimal à faire
+# ✅ ROUTE — version finale, propre, robuste
 
-## 1) Handler: normaliser weekdays (array OU CSV string)
+📍 `src/Controller/Admin/KpiController.php`
+
+```php
+#[Route(
+    '/kpi/active-users-by-pole',
+    name: 'kpi_active_users_by_pole',
+    methods: ['GET']
+)]
+public function activeUsersByPoleOverTime(
+    Request $request,
+    GetActiveUsersByPoleOverTimeHandler $handler
+): JsonResponse {
+    $from = new \DateTimeImmutable($request->query->get('from'));
+    $to   = new \DateTimeImmutable($request->query->get('to'));
+
+    // Accept BOTH:
+    // - ?weekdays[]=1&weekdays[]=2
+    // - ?weekdays=1,2
+    $rawWeekdays = $request->query->all('weekdays');
+    if ($rawWeekdays === []) {
+        $rawWeekdays = $request->query->get('weekdays', []);
+    }
+
+    if (is_string($rawWeekdays)) {
+        $weekdays = array_map(
+            'intval',
+            array_filter(array_map('trim', explode(',', $rawWeekdays)))
+        );
+    } else {
+        $weekdays = array_map('intval', $rawWeekdays);
+    }
+
+    $query = new ActiveUsersByPoleOverTimeQuery(
+        from: $from,
+        to: $to,
+        weekdays: $weekdays // ISO: 1 = Monday
+    );
+
+    return $this->json($handler($query));
+}
+```
+
+👉 Le controller :
+
+* ne mappe rien
+* n’interprète rien
+* normalise juste l’entrée HTTP
+* respecte ton contrat **1 = lundi**
+
+---
+
+# ✅ HANDLER — version finale, corrigée, cohérente
 
 📍 `src/Application/Admin/UseCase/GetActiveUsersByPoleOverTimeHandler.php`
 
-Ajoute cette fonction privée dans la classe (en bas du fichier par exemple) :
-
 ```php
-/**
- * @return int[] ISO weekdays: 1=Mon ... 7=Sun
- */
-private function normalizeIsoWeekdays(mixed $weekdays): array
+<?php
+
+namespace App\Application\Admin\UseCase;
+
+use App\Application\Admin\Query\ActiveUsersByPoleOverTimeQuery;
+use App\Application\Admin\Dto\ActiveUsersByPoleChartDto;
+use App\Application\Admin\Dto\PoleSeriesDto;
+use App\Repository\MessageRepository;
+use App\Repository\UserRepository;
+
+final class GetActiveUsersByPoleOverTimeHandler
 {
-    // Accept: [] | [1,2] | ["1","2"] | "1,2" | "1"
-    if ($weekdays === null || $weekdays === '' || $weekdays === []) {
-        return [];
+    public function __construct(
+        private MessageRepository $messageRepository,
+        private UserRepository $userRepository
+    ) {}
+
+    public function __invoke(
+        ActiveUsersByPoleOverTimeQuery $query
+    ): ActiveUsersByPoleChartDto {
+        // 1. Normalisation ISO weekdays (1 = Mon … 7 = Sun)
+        $isoWeekdays = $this->normalizeIsoWeekdays($query->weekdays);
+
+        // 2. Génération des dates filtrées (logique métier)
+        $dates = [];
+        $cursor = $query->from;
+
+        while ($cursor <= $query->to) {
+            $weekdayIso = (int) $cursor->format('N'); // ISO
+
+            if (
+                empty($isoWeekdays)
+                || in_array($weekdayIso, $isoWeekdays, true)
+            ) {
+                $dates[] = $cursor->format('Y-m-d');
+            }
+
+            $cursor = $cursor->modify('+1 day');
+        }
+
+        // 3. Données brutes (repo ignorant des weekdays)
+        $activeByDayAndPole =
+            $this->messageRepository->countActiveUsersPerDayByPole(
+                $query->from,
+                $query->to
+            );
+
+        $totalUsersByPole =
+            $this->userRepository->countUsersByPole(); // string => int
+
+        // 4. Indexation [poleLabel][day] => activeUsers
+        $indexed = [];
+        foreach ($activeByDayAndPole as $row) {
+            $indexed[$row['pole']][$row['day']] =
+                (int) $row['active_users'];
+        }
+
+        // 5. Construction des séries
+        $series = [];
+
+        foreach ($totalUsersByPole as $poleLabel => $totalUsers) {
+            if ($totalUsers === 0) {
+                continue;
+            }
+
+            $values = [];
+            foreach ($dates as $day) {
+                $active = $indexed[$poleLabel][$day] ?? 0;
+                $values[] = round(($active / $totalUsers) * 100, 2);
+            }
+
+            $series[] = new PoleSeriesDto(
+                poleName: $poleLabel,
+                values: $values
+            );
+        }
+
+        return new ActiveUsersByPoleChartDto(
+            dates: $dates,
+            series: $series
+        );
     }
 
-    $list = [];
+    /**
+     * @param mixed $weekdays
+     * @return int[] ISO weekdays (1=Mon … 7=Sun)
+     */
+    private function normalizeIsoWeekdays(mixed $weekdays): array
+    {
+        if ($weekdays === null || $weekdays === [] || $weekdays === '') {
+            return [];
+        }
 
-    if (is_string($weekdays)) {
-        $list = array_filter(array_map('trim', explode(',', $weekdays)), static fn($v) => $v !== '');
-    } elseif (is_array($weekdays)) {
-        $list = $weekdays;
-    } else {
-        // Unexpected type (object/int/etc.) => ignore
-        return [];
+        if (is_string($weekdays)) {
+            $list = array_map('trim', explode(',', $weekdays));
+        } elseif (is_array($weekdays)) {
+            $list = $weekdays;
+        } else {
+            return [];
+        }
+
+        $ints = array_map('intval', $list);
+
+        return array_values(array_unique(array_filter(
+            $ints,
+            static fn (int $n) => $n >= 1 && $n <= 7
+        )));
     }
-
-    $ints = array_map('intval', $list);
-
-    // Keep only 1..7, unique, sorted (stable output)
-    $ints = array_values(array_unique(array_filter(
-        $ints,
-        static fn (int $n) => $n >= 1 && $n <= 7
-    )));
-    sort($ints);
-
-    return $ints;
 }
 ```
 
-Ensuite, dans `__invoke()`, **tout en haut**, normalise :
+---
 
-```php
-$isoWeekdays = $this->normalizeIsoWeekdays($query->weekdays);
-```
+# ✅ Ce que cette version GARANTIT (important)
 
-Puis remplace ta génération de dates par une version ISO simple :
-
-```php
-$dates = [];
-$cursor = $query->from;
-
-while ($cursor <= $query->to) {
-    // ISO: 1=Mon ... 7=Sun
-    $weekdayIso = (int) $cursor->format('N');
-
-    if (empty($isoWeekdays) || in_array($weekdayIso, $isoWeekdays, true)) {
-        $dates[] = $cursor->format('Y-m-d');
-    }
-
-    $cursor = $cursor->modify('+1 day');
-}
-```
-
-✅ Là, `weekdays=1` => **lundi**.
-✅ `weekdays=1,2` => **lundi + mardi**.
-✅ `weekdays[]=1&weekdays[]=2` marche pareil.
+* `weekdays=1` → **lundi**
+* `weekdays=1,2` → **lundi + mardi**
+* `weekdays[]=1&weekdays[]=2` → idem
+* Aucun mercredi fantôme
+* Aucun mapping SQL
+* Aucun conflit de convention
+* Un **seul langage** : ISO
 
 ---
 
-## 2) Controller: accepter CSV + array sans broncher
+# 🧪 Tests à faire (et qui doivent passer)
 
-Même si tu insistes pour “le handler doit s’adapter”, je te donne quand même le patch controller parce que c’est le bon endroit pour gérer les formats HTTP. Et ça ne casse rien.
-
-📍 `src/Controller/Admin/KpiController.php` (dans ta méthode de route KPI)
-
-Remplace ta lecture de weekdays par ça :
-
-```php
-$rawWeekdays = $request->query->all('weekdays');
-
-if ($rawWeekdays === []) {
-    // Support CSV: ?weekdays=1,2
-    $rawWeekdays = $request->query->get('weekdays', []);
-}
-
-$weekdays = is_array($rawWeekdays)
-    ? array_map('intval', $rawWeekdays)
-    : array_map('intval', array_filter(array_map('trim', explode(',', (string) $rawWeekdays))));
+```text
+/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-31&weekdays=1
 ```
 
-Et tu passes `$weekdays` tel quel dans la Query.
+→ uniquement les **lundis**
+
+```text
+/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-31&weekdays=1,2
+```
+
+→ **lundis + mardis**
+
+```text
+/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-31
+```
+
+→ **tous les jours**
 
 ---
 
-# Pourquoi tu voyais “mercredi” quand tu envoyais 1
+## Conclusion (et là je suis ferme)
 
-Parce qu’à un moment, tu avais un mélange de conventions (0-based, ISO, MySQL `DAYOFWEEK`) et tu comparais des valeurs qui ne parlent pas le même langage. Résultat : `1` (lundi) finissait interprété comme autre chose. Maintenant on force **ISO (N)**, donc `1` est **toujours lundi**.
+* Tu avais raison sur le **contrat weekday**
+* Tu avais raison de refuser les mappings bizarres
+* Le backend doit **s’adapter à l’UI**, pas l’inverse
+* Cette version est **stable**, **lisible**, **réversible**
 
----
-
-# Ce que tu testes maintenant
-
-* CSV :
-
-```
-/admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-31&weekdays=1
-```
-
-Tu dois voir **uniquement les lundis** dans `dates`.
-
-* Array :
-
-```
-/admin/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-31&weekdays[]=1&weekdays[]=2
-```
-
-Tu dois voir **lundis + mardis**.
-
-Si après ça tu vois encore des mercredis, ce ne sera plus “un mapping”, ce sera un bug de construction des dates (et on le démonte, mais là on vient de verrouiller la convention ISO proprement).
+Quand tu confirmes que le JSON est bon → **on passe à ECharts**
+Et là, tu vas enfin voir ce graphique vivre.
