@@ -1,188 +1,165 @@
-Très bonne piste. Et cette fois, **tu touches exactement le bon nerf**.
-Ce n’est **pas** “l’encodeur base64” qui est faux.
-Ce n’est **pas** “l’API”.
-👉 **C’est la représentation du `path` AVANT encodage**.
+Parfait. On va faire ça **proprement, lentement, et sans magie**.
+Tu veux avancer **fichier par fichier**, tu valides, puis on continue. C’est exactement comme ça qu’on évite les usines à gaz.
 
-Je t’explique calmement, parce que c’est subtil, et 90 % des gens se plantent ici.
+👉 **Étape 1 uniquement dans ce message**
+👉 **Repository seulement**
+👉 **Aucune Clean Arch autour pour l’instant**
+👉 **Aucune route, aucun DTO, aucun ECharts**
 
 ---
 
-## 1️⃣ Ce que tu vois vs ce que tu as réellement
+# 🥇 ÉTAPE 1 — MessageRepository
 
-Quand tu vois dans le JSON un truc comme :
+## Objectif
+
+Ajouter **UNE** méthode qui permet de répondre à la question suivante :
+
+> Pour chaque jour et pour chaque pôle,
+> combien d’utilisateurs distincts ont envoyé au moins un message ?
+
+Sans pourcentage. Sans nom de pôle. Juste des faits.
+
+---
+
+## 📍 Où intervenir exactement
+
+**Fichier existant** (chez toi) :
 
 ```
-Communiqu\u00e9s de presse FR
+src/Repository/MessageRepository.php
 ```
 
-⚠️ **Ça ne veut PAS dire que ton string contient `\u00e9`**.
+On **n’en modifie aucune méthode existante**.
+On **ajoute une nouvelle méthode**, point.
 
-Ça veut dire :
+---
 
-* le **JSON est échappé**
-* mais **la valeur réelle en mémoire est déjà :**
+## 🧠 Contrat de la méthode (important)
 
+Signature claire, sans ambiguïté :
+
+```php
+public function countActiveUsersPerDayByPole(
+    ?\DateTimeImmutable $from = null,
+    ?\DateTimeImmutable $to = null,
+    array $weekdays = []
+): array
 ```
-Communiqués de presse FR
+
+Pourquoi :
+
+* `from / to` optionnels → cohérent avec ton existant
+* `weekdays` optionnel → filtre métier mais **technique côté repo**
+* retour `array` → brut, exploité plus tard par le use case
+
+---
+
+## 📦 Format de retour attendu
+
+La méthode retournera **une liste plate** (Doctrine style), par exemple :
+
+```php
+[
+  [
+    'day' => '2026-01-02',
+    'pole_id' => 5,
+    'active_users' => 42,
+  ],
+  [
+    'day' => '2026-01-02',
+    'pole_id' => 2,
+    'active_users' => 17,
+  ],
+]
 ```
 
-👉 **Si ce JSON est parsé normalement (fetch, axios, Symfony serializer, etc.)**,
-tu as déjà un **vrai string UTF-8**, pas une séquence `\u00e9`.
-
-Donc :
-
-* ❌ il ne faut PAS “déséchapper”
-* ❌ il ne faut PAS remplacer les accents
-* ❌ il ne faut PAS nettoyer les caractères spéciaux
+👉 Pas de regroupement ici
+👉 Pas de transformation
+👉 Le handler s’en chargera plus tard
 
 ---
 
-## 2️⃣ Le vrai problème possible (et fréquent)
+## 🧩 Implémentation complète à ajouter
 
-Le vrai piège est ici 👇
+👉 **À copier-coller telle quelle** dans `MessageRepository.php`
 
-### ❌ Mauvaise hypothèse
+```php
+public function countActiveUsersPerDayByPole(
+    ?\DateTimeImmutable $from = null,
+    ?\DateTimeImmutable $to = null,
+    array $weekdays = []
+): array {
+    $qb = $this->createQueryBuilder('m');
 
-> “Il faut transformer le path pour enlever les accents avant de base64”
+    $qb
+        ->select(
+            'DATE(m.createdAt) AS day',
+            'p.id AS pole_id',
+            'COUNT(DISTINCT u.id) AS active_users'
+        )
+        ->join('m.conversation', 'c')
+        ->join('c.user', 'u')
+        ->join('u.pole', 'p')
+        ->groupBy('day')
+        ->addGroupBy('p.id')
+        ->orderBy('day', 'ASC');
 
-➡️ **NON.**
-Ça casserait le mapping côté API si elle attend le chemin UTF-8 exact.
+    if ($from !== null) {
+        $qb
+            ->andWhere('m.createdAt >= :from')
+            ->setParameter('from', $from);
+    }
 
-### ✅ Bonne hypothèse
+    if ($to !== null) {
+        $qb
+            ->andWhere('m.createdAt <= :to')
+            ->setParameter('to', $to);
+    }
 
-> “Il faut être sûr que ce qu’on base64-encode est bien du UTF-8 canonique”
+    if (!empty($weekdays)) {
+        // Doctrine: 1 = Sunday, 7 = Saturday (MySQL)
+        $qb
+            ->andWhere('DAYOFWEEK(m.createdAt) IN (:weekdays)')
+            ->setParameter('weekdays', $weekdays);
+    }
 
-Et là, tu es dans le vrai.
-
----
-
-## 3️⃣ Le problème réel : normalisation Unicode
-
-Deux strings peuvent **s’afficher pareil** mais **être différentes en bytes**.
-
-Exemple classique :
-
-* `é` (U+00E9)
-* `e + ́` (U+0065 + U+0301)
-
-Visuellement identiques.
-**Binaires différents.**
-
-👉 Certaines APIs :
-
-* normalisent
-* d’autres **NON**
-
-👉 Si le backend distant compare des chemins **byte-par-byte**,
-une différence de normalisation = **404**.
-
----
-
-## 4️⃣ Ce que tu DOIS faire (et seulement ça)
-
-### ✅ Étape obligatoire côté frontend
-
-**Normaliser le path en UTF-8 NFC avant base64**.
-
-Pas plus. Pas moins.
-
----
-
-## 5️⃣ Implémentation CORRECTE (frontend)
-
-📍 **Toujours dans `BrowserFileViewer.ts`**
-👉 **PAS ailleurs**
-
-```ts
-function encodePathBase64UrlSafe(path: string): string {
-  // 1️⃣ Normalisation Unicode (clé du problème)
-  const normalized = path.normalize('NFC');
-
-  // 2️⃣ UTF-8 → base64
-  const base64 = btoa(
-    unescape(encodeURIComponent(normalized))
-  );
-
-  // 3️⃣ Base64 URL-safe
-  return base64
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+    return $qb->getQuery()->getArrayResult();
 }
 ```
 
-### Pourquoi ça marche
+---
 
-* `normalize('NFC')` → forme canonique standard
-* `encodeURIComponent` → UTF-8 bytes corrects
-* `btoa` → base64 fiable
-* URL-safe → conforme Swagger
+## ⚠️ Points importants (à lire avant de dire OK)
 
-👉 **Aucune perte d’information**
-👉 **Aucune altération métier**
-👉 **Zéro hack**
+* ✔️ On **utilise Message comme source de vérité**
+* ✔️ Un user est actif **s’il a au moins un message**
+* ✔️ Le `DISTINCT u.id` empêche le multi-message
+* ✔️ Le repository **ne calcule aucun pourcentage**
+* ✔️ Le repository **ne connaît pas les noms de pôles**
+* ✔️ Aucune logique métier haut niveau ici
+
+Si plus tard :
+
+* tu changes la définition d’“actif”
+* tu ajoutes un autre axe (jour ouvré, heure, etc.)
+
+👉 ce sera **un autre use case**, pas ici.
 
 ---
 
-## 6️⃣ Ce que tu NE DOIS SURTOUT PAS faire
+## ✅ Ce que tu dois faire maintenant
 
-❌ Supprimer les accents
-❌ Remplacer `é` par `e`
-❌ Faire un slug
-❌ Modifier le chemin
-❌ “Nettoyer” le path
+1. Ajouter **exactement** cette méthode
+2. Vérifier :
 
-👉 Le path est un **identifiant**, pas un label.
-
----
-
-## 7️⃣ Pourquoi Swagger continue à échouer (même après ça)
-
-Même avec la normalisation, **Swagger peut encore renvoyer 404**, et ce sera **toujours normal**, parce que :
-
-* Swagger ne reproduit pas le contexte réel
-* le path est valide **dans un workspace précis**
-* pas forcément dans celui que Swagger utilise
-
-Donc :
-
-* ✅ valide via ton backend
-* ❌ n’utilise pas Swagger comme vérité absolue
+   * que `u.pole` existe bien dans ton mapping Doctrine
+   * que `DAYOFWEEK` correspond à ce que ton front envoie
+3. Me dire **OK** quand c’est fait
 
 ---
 
-## 8️⃣ Comment vérifier que tu es maintenant “bon”
+Ensuite, **étape 2** :
+👉 on crée **la Query + le Handler** qui consomment cette méthode
+👉 là seulement on commence la vraie Clean Architecture
 
-Ajoute un log temporaire côté backend :
-
-```php
-error_log(base64_decode(strtr($encodedPath, '-_', '+/')));
-```
-
-Si tu vois exactement :
-
-```
-resources/FONCTIONS - COMM GROUPE/Communiqués de presse FR/...
-```
-
-👉 alors :
-
-* ton encodage est parfait
-* ton Unicode est propre
-* **le problème restant est 100 % côté API / data / contexte**
-
----
-
-## 9️⃣ Verdict clair
-
-✔️ Tu avais raison de douter
-✔️ Tu avais identifié le bon axe
-✔️ Ce n’est pas “le base64”
-✔️ C’est la **normalisation Unicode avant base64**
-✔️ Une seule ligne (`normalize('NFC')`) peut tout changer
-
-Et surtout :
-👉 **tu n’as pas besoin d’une “étape de nettoyage” métier**,
-👉 juste d’une **mise en forme Unicode correcte avant transport**.
-
-Si après ça tu as **encore** un 404 via TON backend (pas Swagger), alors là, on pourra affirmer sans ambiguïté que **l’API ne garantit pas la récupérabilité du champ `path`**. Et ça, ce sera une info à remonter, pas un bug à corriger chez toi.
+Un pas à la fois. Sinon on retombe dans le bricolage.
