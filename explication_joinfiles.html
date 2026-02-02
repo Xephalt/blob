@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagramme complet – Flux JoinFiles</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #1a5490;
+            border-bottom: 4px solid #1a5490;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+            font-size: 2.2em;
+        }
+        
+        h2 {
+            color: #2980b9;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+            border-left: 5px solid #2980b9;
+            padding-left: 15px;
+        }
+        
+        h3 {
+            color: #3498db;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        .intro {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 4px solid #3498db;
+        }
+        
+        ul, ol {
+            margin-left: 25px;
+            margin-bottom: 20px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+        }
+        
+        .diagram {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            overflow-x: auto;
+            border: 1px solid #ddd;
+            font-family: 'Courier New', monospace;
+            white-space: pre;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        
+        .highlight-box {
+            background: #fff3cd;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .warning {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .warning::before {
+            content: "⚠️ ";
+            font-weight: bold;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        th {
+            background: #2980b9;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        tr:hover {
+            background: #e3f2fd;
+        }
+        
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+        }
+        
+        .arrow {
+            text-align: center;
+            color: #2980b9;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .section-block {
+            background: #f0f4f8;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 5px solid #3498db;
+        }
+        
+        .conclusion {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 40px;
+            font-size: 1.05em;
+        }
+        
+        .conclusion strong {
+            color: #2e7d32;
+        }
+        
+        .key-points {
+            background: #fff8e1;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .key-points h4 {
+            color: #f57c00;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        
+        .key-points ul {
+            list-style: none;
+            margin-left: 0;
+        }
+        
+        .key-points li:before {
+            content: "✓ ";
+            color: #4caf50;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #ecf0f1;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        
+        blockquote {
+            border-left: 4px solid #3498db;
+            padding-left: 20px;
+            margin: 20px 0;
+            font-style: italic;
+            color: #555;
+        }
+        
+        .next-steps {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 30px;
+        }
+        
+        .next-steps h4 {
+            color: #1976d2;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Diagramme complet – Flux JoinFiles</h1>
+        
+        <div class="intro">
+            <p>Ce document décrit <strong>de manière exhaustive et correcte</strong> :</p>
+            <ul>
+                <li>les <strong>entrées</strong></li>
+                <li>les <strong>transformations successives</strong></li>
+                <li>les <strong>fichiers intermédiaires</strong></li>
+                <li>les <strong>sorties finales</strong></li>
+                <li>le <strong>cas spécifique des personnes désactivées</strong></li>
+            </ul>
+            <p style="margin-top: 15px;">Il correspond <strong>exactement</strong> à la version réelle de <code>JoinFiles.sh</code> (script orchestrateur monolithique).</p>
+        </div>
+        
+        <h2>1. Vue macro – pipeline global</h2>
+        
+        <div class="diagram">
+┌──────────────────────────┐
+│   FICHIERS CHIFFRÉS      │
+│  (.csv.gpg / .zip.gpg)   │
+└────────────┬─────────────┘
+             │
+             ▼
+┌──────────────────────────┐
+│       JoinFiles.sh       │
+│  (orchestrateur maître)  │
+└────────────┬─────────────┘
+             │
+     uncypher_all_files (Déchiffrement)
+             │
+             ▼
+┌──────────────────────────┐
+│     CSV SOURCES CLAIRS   │
+│1-Personne/UO/Immeubles…  |
+│2-unzip ELOQUA(EDGAHR/JAD)│
+└────────────┬─────────────┘
+             │
+             │
+             ▼
+      ┌───────────────┐
+  (2) │               │ (1)
+      ▼               ▼
+processEdjad     processRefog
+      │               │
+      ▼               ▼
+Import_EdJad.csv  ImportRefog.csv (intermédiaire)
+      │           ImportRefogDesact.csv (delta)
+      │                     │
+      │                     ▼
+      └───────────▶  joinEdjadToRefog
+                            │
+                            ▼
+                    ImportRefog.csv (FINAL)
+                            │
+                            ▼
+                        cleanupFiles
+        </div>
+        
+        <h2>2. Détail par étape</h2>
+        
+        <h3>2.1 Déchiffrement &amp; préparation (JoinFiles.sh)</h3>
+        
+        <div class="section-block">
+            <h4>Entrées</h4>
+            <ul>
+                <li>Immeuble.csv.gpg</li>
+                <li>Personne.csv.gpg</li>
+                <li>PersonneDesact.csv.gpg</li>
+                <li>UO.csv.gpg</li>
+                <li>UOHierarchique.csv.gpg</li>
+                <li>TypeFiliere.csv.gpg</li>
+                <li>Filiere.csv.gpg</li>
+                <li>SousFiliere.csv.gpg</li>
+                <li>ELOQUA.zip.gpg</li>
+            </ul>
+        </div>
+        
+        <div class="section-block">
+            <h4>Traitements</h4>
+            <ul>
+                <li>Déchiffrement GPG → CSV clairs</li>
+                <li>Dézip de ELOQUA.zip → EDGAHR / JAD</li>
+            </ul>
+        </div>
+        
+        <div class="section-block">
+            <h4>Sorties</h4>
+            <ul>
+                <li>CSV sources exploitables</li>
+            </ul>
+        </div>
+        
+        <h3>2.2 Enrichissement métier RH – processEdjad</h3>
+        
+        <div class="section-block">
+            <h4>Entrées</h4>
+            <ul>
+                <li>EMPLOYEE_RTL.csv (EDGAHR)</li>
+                <li>JAD_JL.csv (JAD)</li>
+            </ul>
+        </div>
+        
+        <div class="section-block">
+            <h4>Transformations</h4>
+            <p>Extraction hiérarchique JAD :</p>
+            <ul>
+                <li>Domaine</li>
+                <li>Famille</li>
+                <li>Emploi</li>
+                <li>Position</li>
+                <li>Normalisation des codes EDGAHR</li>
+                <li>Jointure EDGAHR ↔ JAD</li>
+                <li>Ajout des libellés FR / EN</li>
+            </ul>
+        </div>
+        
+        <div class="highlight-box">
+            <strong>Sortie :</strong> <code>Import_EdJad.csv</code>
+            <p>Fichier <strong>INTERMÉDIAIRE</strong> uniquement</p>
+        </div>
+        
+        <h3>2.3 Consolidation personnes &amp; structure – processRefog</h3>
+        
+        <div class="section-block">
+            <h4>Entrées</h4>
+            <ul>
+                <li>Personne.csv</li>
+                <li>PersonneDesact.csv</li>
+                <li>UO.csv</li>
+                <li>UOHierarchique.csv</li>
+                <li>Immeuble.csv</li>
+                <li>Filiere / SousFiliere</li>
+            </ul>
+        </div>
+        
+        <h4>2.3.1 Séparation des flux personnes</h4>
+        
+        <h5 style="color: #2980b9; margin-top: 20px;">Personnes actives (VISIBLE = 1)</h5>
+        <ul>
+            <li>Jointure avec :
+                <ul>
+                    <li>Immeubles</li>
+                    <li>UO</li>
+                    <li>Hiérarchies</li>
+                    <li>Filières</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <p class="arrow">➡️ Produit :</p>
+        
+        <div class="highlight-box">
+            <code>ImportRefog.csv</code> (snapshot intermédiaire)
+        </div>
+        
+        <h5 style="color: #2980b9; margin-top: 20px;">Personnes désactivées (VISIBLE = 0)</h5>
+        
+        <div class="diagram">PersonneDesact.csv
+        │
+        ▼
+PersonneDesactTmp.csv   (état absolu du jour)
+        │
+        │ comparaison
+        ▼
+ImportRefogDesactVieille.csv (état J-1)
+        │
+        ▼
+ImportRefogDesact.csv   (DELTA uniquement)</div>
+        
+        <p class="arrow">➡️ <strong>Flux événementiel séparé</strong></p>
+        
+        <h3>2.4 Jointure finale EdJad → Refog</h3>
+        
+        <div class="section-block">
+            <h4>Entrées</h4>
+            <ul>
+                <li>ImportRefog.csv (intermédiaire)</li>
+                <li>Import_EdJad.csv</li>
+            </ul>
+        </div>
+        
+        <div class="section-block">
+            <h4>Traitements</h4>
+            <ul>
+                <li>Suppression des entêtes</li>
+                <li>Tri par UID</li>
+                <li>Jointure :
+                    <ul>
+                        <li>1 personne Refog</li>
+                        <li>+ données métier EdJad</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="highlight-box">
+            <strong>Sortie :</strong> <code>ImportRefog.csv</code> (FINAL, enrichi métier)
+        </div>
+        
+        <h3>2.5 Nettoyage</h3>
+        
+        <div class="section-block">
+            <h4>cleanupFiles</h4>
+            <ul>
+                <li>Supprime tous les fichiers intermédiaires</li>
+                <li>Conserve uniquement :
+                    <ul>
+                        <li>ImportRefog.csv</li>
+                        <li>ImportRefogDesact.csv</li>
+                        <li>ImportRefogDesactVieille.csv</li>
+                        <li>scripts .sh</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+        
+        <h2>3. Fichiers finaux réellement utilisés</h2>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Fichier</th>
+                    <th>Rôle</th>
+                    <th>Nature</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>ImportRefog.csv</code></td>
+                    <td>Import principal ReFOG</td>
+                    <td>Snapshot enrichi</td>
+                </tr>
+                <tr>
+                    <td><code>ImportRefogDesact.csv</code></td>
+                    <td>Désactivations</td>
+                    <td>Delta événementiel</td>
+                </tr>
+                <tr>
+                    <td><code>ImportRefogDesactVieille.csv</code></td>
+                    <td>Mémoire</td>
+                    <td>État cumulatif</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div class="warning">
+            <code>Import_EdJad.csv</code> <strong>n'existe plus à la fin</strong>.
+        </div>
+        
+        <h2>4. Modèle conceptuel sous-jacent</h2>
+        
+        <ul>
+            <li><strong>Snapshot</strong> = état courant</li>
+            <li><strong>Delta</strong> = événement unique</li>
+            <li><strong>OLD</strong> = mémoire persistante</li>
+        </ul>
+        
+        <p>Implémenté :</p>
+        <ul>
+            <li>sans base</li>
+            <li>sans ETL</li>
+            <li>sans API</li>
+            <li>uniquement par fichiers</li>
+        </ul>
+        
+        <h2>5. Synthèse</h2>
+        
+        <blockquote>
+            Ce script n'est pas un simple batch. C'est un <strong>ETL (Extract, Transform, Load) complet déguisé en shell</strong>, avec état, événements et projections.
+        </blockquote>
+        
+        <div class="key-points">
+            <h4>Points clés à retenir</h4>
+            <ul>
+                <li>JoinFiles.sh = ETL maître</li>
+                <li>Import_EdJad.csv = fichier intermédiaire, consommé puis supprimé</li>
+                <li>ImportRefog.csv = projection finale enrichie</li>
+                <li>ImportRefogDesact.csv = événements de désactivation (delta)</li>
+                <li>ImportRefogDesactVieille.csv = mémoire persistante</li>
+                <li>Les personnes désactivées ne passent jamais par EdJad</li>
+                <li>Snapshot et delta sont volontairement séparés</li>
+            </ul>
+        </div>
+        
+    </div>
+</body>
+</html>
