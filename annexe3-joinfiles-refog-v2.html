@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Annexe – JoinFilesRefog.sh – Consolidation ReFOG</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #1a5490;
+            border-bottom: 4px solid #1a5490;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+            font-size: 2.2em;
+        }
+        
+        h2 {
+            color: #2980b9;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+            border-left: 5px solid #2980b9;
+            padding-left: 15px;
+        }
+        
+        h3 {
+            color: #3498db;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        .intro {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            overflow-x: auto;
+            border-left: 5px solid #ff9800;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), inset 0 1px 3px rgba(0, 0, 0, 0.3);
+            border: 1px solid #333;
+            position: relative;
+        }
+        
+        .code-block code {
+            background: none;
+            padding: 0;
+            border-radius: 0;
+            color: #d4d4d4;
+            font-size: 13px;
+            display: block;
+            white-space: pre;
+            word-break: normal;
+            word-wrap: normal;
+        }
+        
+        .code-block::before {
+            content: "sh";
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            font-size: 11px;
+            color: #666;
+            background: #333;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        
+        .k { color: #569cd6; font-weight: bold; }
+        .s { color: #ce9178; }
+        .c { color: #6a9955; font-style: italic; }
+        .v { color: #9cdcfe; }
+        .f { color: #dcdcaa; }
+        .n { color: #b5cea8; }
+        .o { color: #d4d4d4; }
+        
+        .flow-diagram {
+            background: #f8f9fa;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.8;
+            white-space: pre;
+            overflow-x: auto;
+            color: #333;
+        }
+        
+        .hierarchy-box {
+            background: linear-gradient(135deg, #e8f4f8 0%, #f0f8fc 100%);
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            font-family: 'Segoe UI', sans-serif;
+            text-align: center;
+        }
+        
+        .level-box {
+            background: white;
+            border: 2px solid #2196f3;
+            padding: 12px 20px;
+            margin: 8px 0;
+            border-radius: 6px;
+            display: inline-block;
+            min-width: 180px;
+            font-weight: 500;
+            color: #1976d2;
+        }
+        
+        .arrow-down {
+            color: #2196f3;
+            font-size: 1.2em;
+            margin: 5px 0;
+        }
+        
+        .section-block {
+            background: #f0f4f8;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 5px solid #3498db;
+        }
+        
+        .highlight-box {
+            background: #fff3cd;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .success-box {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .warning {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .warning::before {
+            content: "⚠️ ";
+            font-weight: bold;
+        }
+        
+        ul, ol {
+            margin-left: 25px;
+            margin-bottom: 20px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+        }
+        
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            color: #d32f2f;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        th {
+            background: #2980b9;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        tr:hover {
+            background: #e3f2fd;
+        }
+        
+        .data-flow {
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f0f4f8;
+            border-radius: 8px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .data-flow-box {
+            background: white;
+            border: 2px solid #3498db;
+            padding: 15px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            color: #1976d2;
+            text-align: center;
+            min-width: 100px;
+        }
+        
+        .data-flow-arrow {
+            color: #3498db;
+            font-size: 1.4em;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #ecf0f1;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        
+        .comparison {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .comparison-box {
+            flex: 1;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid;
+        }
+        
+        .comparison-box.before {
+            background: #ffe3e3;
+            border-color: #f44336;
+        }
+        
+        .comparison-box.after {
+            background: #e3f2fd;
+            border-color: #2196f3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Annexe – JoinFilesRefog.sh</h1>
+        <h2 style="margin-top: 0; border: none; padding: 0; color: #666; font-size: 1.4em;">Consolidation ReFOG – Structure organisationnelle</h2>
+        
+        <div class="intro">
+            <p><strong>JoinFilesRefog.sh</strong> consolide la structure organisationnelle en fusionnant :</p>
+            <ul>
+                <li>✓ Données personnelles (Personne.csv, PersonneDesact.csv)</li>
+                <li>✓ Structure organisationnelle (UO, UOHierarchique)</li>
+                <li>✓ Localisation (Immeuble)</li>
+                <li>✓ Nomenclature (Filière, SousFilière)</li>
+                <li>✓ Gestion des désactivations (delta J vs J-1)</li>
+                <li>✓ Produit <code>ImportRefog.csv</code> (46 colonnes) + <code>ImportRefogDesact.csv</code> (delta)</li>
+            </ul>
+        </div>
+        
+        <h2>1. Vue globale – Flux de transformation</h2>
+        
+        <div class="flow-diagram">Personne.csv + PersonneDesact.csv + UO.csv + Immeuble.csv
+        + UOHierarchique.csv + Filiere.csv + SousFiliere.csv
+              ↓
+    ┌─────────────────────────────────────────────────┐
+    │   Vérification + nettoyage des données          │
+    └─────────────────────────────────────────────────┘
+              ↓
+    ┌─────────────────────────────────────────────────┐
+    │   Calcul 2 hiérarchies UO (opérationnelle/orga) │
+    └─────────────────────────────────────────────────┘
+              ↓
+    ┌─────────────────────────────────────────────────┐
+    │   Calcul filières (ID → labels FR/EN)           │
+    └─────────────────────────────────────────────────┘
+              ↓
+    ┌─────────────────────────────────────────────────┐
+    │   Fusion UO + hiérarchies + filières            │
+    └─────────────────────────────────────────────────┘
+              ↓
+    ┌─────────────────────────────────────────────────┐
+    │   Jointure Personne + Immeuble + UO + filières  │
+    └─────────────────────────────────────────────────┘
+              ↓
+    ImportRefog.csv (46 cols) + ImportRefogDesact.csv</div>
+        
+        <h2>2. Hiérarchies UO – Opérationnelle vs Organisationnelle</h2>
+        
+        <div class="hierarchy-box">
+            <div style="margin-bottom: 20px; font-weight: bold; color: #333;">
+                Deux hiérarchies complémentaires :
+            </div>
+            
+            <div style="display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 300px;">
+                    <div style="font-weight: bold; color: #ff6f00; margin-bottom: 15px; font-size: 1.1em;">🏢 Hiérarchie OPÉRATIONNELLE</div>
+                    <div class="level-box" style="background: #fff3e0; border-color: #ff9800; color: #f57c00;">Racine : 001000016<br>(UO BNP)</div>
+                    <div class="arrow-down">↓</div>
+                    <div class="level-box" style="background: #fff3e0; border-color: #ff9800; color: #f57c00;">Enfants directs</div>
+                    <div class="arrow-down">↓</div>
+                    <div class="level-box" style="background: #fff3e0; border-color: #ff9800; color: #f57c00;">Enfants d'enfants</div>
+                    <div class="arrow-down">↓</div>
+                    <div class="level-box" style="background: #fff3e0; border-color: #ff9800; color: #f57c00;">... jusqu'à feuilles</div>
+                    <div style="margin-top: 15px; font-size: 0.9em; color: #666;">Source : UO.csv</div>
+                </div>
+                
+                <div style="flex: 1; min-width: 300px;">
+                    <div style="font-weight: bold; color: #2196f3; margin-bottom: 15px; font-size: 1.1em;">📊 Hiérarchie ORGANISATIONNELLE</div>
+                    <div class="level-box" style="background: #e3f2fd; border-color: #2196f3; color: #1565c0;">Racine : 001000016<br>(UO BNP)</div>
+                    <div class="arrow-down">↓</div>
+                    <div class="level-box" style="background: #e3f2fd; border-color: #2196f3; color: #1565c0;">Parents (dont père direct)</div>
+                    <div class="arrow-down">↓</div>
+                    <div class="level-box" style="background: #e3f2fd; border-color: #2196f3; color: #1565c0;">Parents des parents</div>
+                    <div class="arrow-down">↓</div>
+                    <div class="level-box" style="background: #e3f2fd; border-color: #2196f3; color: #1565c0;">... jusqu'à racine</div>
+                    <div style="margin-top: 15px; font-size: 0.9em; color: #666;">Source : UOHierarchique.csv</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="info-box">
+            <strong>💡 Utilité des deux hiérarchies :</strong>
+            <ul>
+                <li><strong>Opérationnelle :</strong> Affiche la structure complète "vers le bas" (tout ce qui dépend d'une UO)</li>
+                <li><strong>Organisationnelle :</strong> Affiche le contexte "vers le haut" (à quel pôle, direction, etc. une UO appartient)</li>
+                <li>Combinées = vision 360° de la structure</li>
+            </ul>
+        </div>
+        
+        <h2>3. Calcul des hiérarchies – calcul_hierarchies_UO_operationnelles()</h2>
+        
+        <div class="highlight-box">
+            <strong>▶ Algorithme :</strong> Construction itérative bottom-up
+            <ol>
+                <li>Point de départ : UO racine (001000016)</li>
+                <li>Ajouter ses enfants directs + parent = nouvelle ligne</li>
+                <li>Pour chaque enfant ajouté : trouver ses enfants et itérer</li>
+                <li>Résultat : chaîne d'ancêtres pour chaque UO</li>
+            </ol>
+        </div>
+        
+        <div class="code-block"><code><span class="f">calcul_hierarchies_UO_operationnelles</span>() {
+
+  <span class="f">echo</span> <span class="s">"Creation d'un fichier temporaire"</span>
+  <span class="f">cut</span> -d<span class="s">";"</span> -f1,2 <span class="s">"$UO_FILE"</span> <span class="o">></span> UOHierarchyTmp.csv
+
+  <span class="f">echo</span> <span class="s">"Point de depart : UO BNP"</span>
+  <span class="f">grep</span> <span class="s">"^001000016"</span> UOHierarchyTmp.csv <span class="o">></span> UOHierarchy2.csv
+
+  <span class="f">echo</span> <span class="s">"Iteration : ajouter les enfants de chaque UO"</span>
+  iLine=<span class="n">0</span>
+  <span class="k">while</span> <span class="f">read</span> line; <span class="k">do</span>
+    iLine=<span class="v">$((iLine + 1))</span>
+    
+    <span class="v">UO</span>=<span class="s">$(echo "$line" | cut -d";" -f1)</span>
+    <span class="v">PARENTS</span>=<span class="s">$(echo "$line" | sed 's/^[^;]*;//')</span>
+
+    <span class="c"># Trouver tous les enfants de cette UO et ajouter le parent</span>
+    <span class="f">grep</span> <span class="s">"^$UO"</span> UOHierarchyTmp.csv | \
+      <span class="f">sed</span> <span class="s">"s/$/$PARENTS/"</span> <span class="o">>></span> UOHierarchy2.csv
+  <span class="k">done</span> <span class="o"><</span> UOHierarchy2.csv
+
+  <span class="f">echo</span> <span class="s">"Ajout de l'UO elle-meme dans sa hiérarchie"</span>
+  <span class="f">awk</span> <span class="s">'-F";"'</span> <span class="s">'{ $2 = $2 ";" $1 } { OFS=";"; print }'</span> \
+    UOHierarchy2.csv <span class="o">></span> UOHierarchy.csv
+
+  <span class="f">sort</span> -t<span class="s">";"</span> -k1 UOHierarchy.csv <span class="o">></span> UOHierarchy.csv
+  <span class="f">rm</span> -f UOHierarchyTmp.csv UOHierarchy2.csv
+}</code></div>
+        
+        <h2>4. Calcul des filières – Transformation ID → Labels</h2>
+        
+        <div class="section-block">
+            <strong>Processus de conversion :</strong>
+            <ol>
+                <li>Fichiers reçus en ISO-8859-1 → conversion en UTF-8</li>
+                <li>Extraction des 3 niveaux : Type Filière, Filière, Sous-Filière</li>
+                <li>Séparation FR/EN pour chaque niveau</li>
+                <li>Itération : remplacer ID par labels avec sed</li>
+                <li>Résultat : fichiers indexés par UO_ID avec labels</li>
+            </ol>
+        </div>
+        
+        <div class="code-block"><code><span class="f">calcul_filieres</span>() {
+
+  <span class="f">echo</span> <span class="s">"Conversion ISO-8859-1 → UTF-8"</span>
+  <span class="f">iconv</span> -f <span class="s">"ISO-8859-1"</span> -t <span class="s">"UTF-8"</span> \
+    <span class="s">"$TYPE_FILIERE_FILE"</span> <span class="o">></span> TypeFiliere2.csv
+
+  <span class="f">echo</span> <span class="s">"Extraction des 9 colonnes filière par UO"</span>
+  <span class="f">awk</span> <span class="s">'-F";"'</span> <span class="s">'{ print $1";"$4";"$7";"$10";"$13";"$16";"$19";"$22";"$25 }'</span> \
+    FiliereTmp.csv <span class="o">></span> FiliereFR_temp.csv
+
+  <span class="f">echo</span> <span class="s">"Nettoyage : remplacer ;; par ; ;"</span>
+  <span class="f">sed</span> <span class="s">'s/;$//'</span> FiliereFR_temp.csv | \
+    <span class="f">sed</span> <span class="s">'s/\;\;/; ;/g'</span> <span class="o">></span> FiliereFR.csv
+
+  <span class="f">echo</span> <span class="s">"Remplacer ID par labels FR"</span>
+  <span class="k">while</span> <span class="f">read</span> line; <span class="k">do</span>
+    <span class="v">IDFILIERE</span>=<span class="s">$(echo "$line" | cut -d";" -f1)</span>
+    <span class="v">LIBFR</span>=<span class="s">$(echo "$line" | cut -d";" -f2 | sed 's/&/\&/g')</span>
+
+    <span class="f">sed</span> -i <span class="s">"s/\(;*\)$IDFILIERE\(;*\)/\1$LIBFR\2/g"</span> FiliereFR.csv
+  <span class="k">done</span> <span class="o"><</span> Filiere2.csv
+
+  <span class="f">sort</span> -t<span class="s">";"</span> -k1 -o FiliereFR.csv FiliereFR.csv
+}</code></div>
+        
+        <h2>5. Préparation des désactivations – Logique Delta</h2>
+        
+        <div class="warning">
+            <strong>Gestion intelligente des suppressions :</strong><br>
+            Ne garder que les changements (delta) entre J et J-1, pas tout l'historique
+        </div>
+        
+        <div class="code-block"><code><span class="f">prepare_fichier_personnes_a_desactiver</span>() {
+
+  <span class="f">echo</span> <span class="s">"Extraction : UID + Mail + Visible (J actuel)"</span>
+  <span class="f">cut</span> -d<span class="s">";"</span> -f1,7,28 PersonneAct2.csv <span class="o">></span> PersonneDesactTmp.csv
+  <span class="f">sed</span> -i <span class="s">'/;1$/d'</span> PersonneDesactTmp.csv  <span class="c"># Supprimer visible=1</span>
+
+  <span class="f">echo</span> <span class="s">"Extraction : UID + Mail (J nouveau desact)"</span>
+  <span class="f">cut</span> -d<span class="s">";"</span> -f1,2 PersonneDesact2.csv <span class="o">></span> PersonneDesact3.csv
+  <span class="f">sed</span> -i <span class="s">'1d;s/$/;0;1/'</span> PersonneDesact3.csv  <span class="c"># Ajouter Visible=0, ToDelete=1</span>
+  <span class="f">cat</span> PersonneDesact3.csv <span class="o">>></span> PersonneDesactTmp.csv
+
+  <span class="k">if</span> [ ! -e <span class="s">"$REFOG_OUTPUT_FILE_NAME_DESACT_OLD"</span> ]; <span class="k">then</span>
+    <span class="f">echo</span> <span class="s">"Premier run : garder tous les désactivés"</span>
+    <span class="f">cp</span> PersonneDesactTmp.csv <span class="s">"$REFOG_OUTPUT_FILE_NAME_DESACT"</span>
+  <span class="k">else</span>
+    <span class="f">echo</span> <span class="s">"Delta : diff(J, J-1)"</span>
+    <span class="f">sort</span> PersonneDesactTmp.csv <span class="s">"$REFOG_OUTPUT_FILE_NAME_DESACT_OLD"</span> | \
+      <span class="f">uniq</span> -u <span class="o">></span> <span class="s">"$REFOG_OUTPUT_FILE_NAME_DESACT"</span>
+  <span class="k">fi</span>
+
+  <span class="f">echo</span> <span class="s">"Sauvegarde J-1 pour demain"</span>
+  <span class="f">cp</span> PersonneDesactTmp.csv <span class="s">"$REFOG_OUTPUT_FILE_NAME_DESACT_OLD"</span>
+}</code></div>
+        
+        <div class="success-box">
+            <strong>✓ Stratégie delta :</strong>
+            <ul>
+                <li>Garder l'état complet d'hier (ImportRefogDesactVieille.csv)</li>
+                <li>Calculer : (J ∪ J-1) - (J ∩ J-1) = changements seulement</li>
+                <li>Résultat : ImportRefogDesact.csv avec delta uniquement</li>
+            </ul>
+        </div>
+        
+        <h2>6. Fusion des données – Orchestration des jointures</h2>
+        
+        <div class="data-flow">
+            <div class="data-flow-box">PersonneAct</div>
+            <div class="data-flow-arrow">+</div>
+            <div class="data-flow-box">Immeuble</div>
+            <div class="data-flow-arrow">↓</div>
+            <div class="data-flow-box">Personneset<br>Immeuble</div>
+        </div>
+        
+        <div class="data-flow">
+            <div class="data-flow-box">UO</div>
+            <div class="data-flow-arrow">+</div>
+            <div class="data-flow-box">Hiérarchies<br>+ Filières</div>
+            <div class="data-flow-arrow">↓</div>
+            <div class="data-flow-box">UO enrichie</div>
+        </div>
+        
+        <div class="data-flow">
+            <div class="data-flow-box">Personnes<br>+Immeuble</div>
+            <div class="data-flow-arrow">+</div>
+            <div class="data-flow-box">UO enrichie</div>
+            <div class="data-flow-arrow">→</div>
+            <div class="data-flow-box" style="background: #e8f5e9; border-color: #4caf50; color: #2e7d32;">ImportRefog<br>(46 cols)</div>
+        </div>
+        
+        <h2>7. Fonction principale – processRefog()</h2>
+        
+        <div class="code-block"><code><span class="f">processRefog</span>() {
+
+  <span class="f">echo</span> <span class="s">"$(date +%Y%m%d-%H%M%S) Lancement processing ReFOG"</span>
+
+  <span class="f">verification_presence_fichiers</span>           <span class="c"># Vérifier 5 fichiers</span>
+  <span class="f">verification_format_fichiers</span>           <span class="c"># Vérifier colonnes requises</span>
+  <span class="f">verifie_rep_archive_ou_creer</span>           <span class="c"># Créer dossier archives/</span>
+
+  <span class="f">replace_email_groupe_avec_email_direct</span> <span class="c"># Email : groupe → direct si existe</span>
+
+  <span class="f">prepare_fichier_personnes_a_desactiver</span> <span class="c"># Calcul delta désactivations</span>
+  <span class="f">prepare_fichier_modifications_personnes_actives</span>  <span class="c"># Actifs + Immeuble</span>
+
+  <span class="f">calcul_filieres</span>                        <span class="c"># ID → labels FR/EN</span>
+  <span class="f">calcul_hierarchies_UO_operationnelles</span>  <span class="c"># Descendants</span>
+  <span class="f">calcul_hierarchies_UO_organisationnelles</span> <span class="c"># Ancêtres</span>
+  <span class="f">jointure_filieres_dans_UOHierarchy</span>    <span class="c"># UO + 2 hiérarchies + filières</span>
+
+  <span class="f">fusion_donnees_vers_fichier_de_sortie</span>   <span class="c"># Fusion finale : 46 colonnes</span>
+
+  <span class="f">echo</span> <span class="s">"$(date +%Y%m%d-%H%M%S) Fin processing ReFOG"</span>
+}</code></div>
+        
+        <h2>8. Structure finale – 46 colonnes ImportRefog.csv</h2>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Groupe</th>
+                    <th>Colonne</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="background: #e3f2fd;">
+                    <td colspan="4" style="background: #bbdefb; font-weight: bold;">Données Personne (cols 1-7)</td>
+                </tr>
+                <tr>
+                    <td>1</td>
+                    <td>Identité</td>
+                    <td>IDUO</td>
+                    <td>Personne.csv</td>
+                </tr>
+                <tr>
+                    <td>2</td>
+                    <td>Identité</td>
+                    <td>PERSONNE_NOM_USUEL</td>
+                    <td>Personne.csv</td>
+                </tr>
+                <tr>
+                    <td>3</td>
+                    <td>Identité</td>
+                    <td>PERSONNE_PRENOM_USUEL</td>
+                    <td>Personne.csv</td>
+                </tr>
+                <tr>
+                    <td>4</td>
+                    <td>Contact</td>
+                    <td>PERSONNE_MOBILE</td>
+                    <td>Personne.csv</td>
+                </tr>
+                <tr>
+                    <td>5</td>
+                    <td>Statut</td>
+                    <td>LIBELLE_FR_STATUT</td>
+                    <td>Personne.csv</td>
+                </tr>
+                <tr>
+                    <td>6</td>
+                    <td>Statut</td>
+                    <td>LIBELLE_EN_STATUT</td>
+                    <td>Personne.csv</td>
+                </tr>
+                <tr>
+                    <td>7</td>
+                    <td>Contact</td>
+                    <td>PERSONNE_EMAIL_GROUPE</td>
+                    <td>Personne.csv (direct si existe)</td>
+                </tr>
+                <tr style="background: #f3e5f5;">
+                    <td colspan="4" style="background: #e1bee7; font-weight: bold;">Données UO (cols 8-15)</td>
+                </tr>
+                <tr>
+                    <td>8</td>
+                    <td>Position</td>
+                    <td>PRESENCE_UO_DT</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>9</td>
+                    <td>Position</td>
+                    <td>PRESENCE_UO_DTDEBUT</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>10</td>
+                    <td>Position</td>
+                    <td>PRESENCE_UO_DTMODIF</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>11</td>
+                    <td>Audit</td>
+                    <td>DT_MODIF_ADMINISTRATEUR</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>12</td>
+                    <td>UO</td>
+                    <td>UO_ID</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>13</td>
+                    <td>UO</td>
+                    <td>UO_NOM_FR</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>14</td>
+                    <td>UO</td>
+                    <td>UO_NOM_EN</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>15</td>
+                    <td>UO</td>
+                    <td>UO_PERE</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr style="background: #e8f5e9;">
+                    <td colspan="4" style="background: #c8e6c9; font-weight: bold;">Hiérarchies UO (cols 16-21)</td>
+                </tr>
+                <tr>
+                    <td>16</td>
+                    <td>Hiérarchie</td>
+                    <td>UO_HIERARCHY</td>
+                    <td>Calculée (opérationnelle)</td>
+                </tr>
+                <tr>
+                    <td>17</td>
+                    <td>Hiérarchie</td>
+                    <td>UO_MAIL</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>18</td>
+                    <td>Hiérarchie</td>
+                    <td>UO_LIBELLE_NOM_FR</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>19</td>
+                    <td>Hiérarchie</td>
+                    <td>UO_LIBELLE_NOM_EN</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>20</td>
+                    <td>Pôle</td>
+                    <td>POLE_PRESENCE_UO_NOM_FR</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>21</td>
+                    <td>Pôle</td>
+                    <td>POLE_PRESENCE_UO_NOM_EN</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr style="background: #fff3e0;">
+                    <td colspan="4" style="background: #ffe0b2; font-weight: bold;">Pôle + Immeuble (cols 22-32)</td>
+                </tr>
+                <tr>
+                    <td>22</td>
+                    <td>Pôle</td>
+                    <td>POLE_PRESENCE_UO_ACTIVITE</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>23</td>
+                    <td>Pôle</td>
+                    <td>POLE_PRESENCE_UO_ACTIVITE_NOM_FR</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>24</td>
+                    <td>Pôle</td>
+                    <td>POLE_PRESENCE_UO_ACTIVITE_NOM_EN</td>
+                    <td>UO.csv</td>
+                </tr>
+                <tr>
+                    <td>25</td>
+                    <td>Immeuble</td>
+                    <td>IMMEUBLE_SEC_ACTIF</td>
+                    <td>Immeuble.csv</td>
+                </tr>
+                <tr>
+                    <td>26</td>
+                    <td>Immeuble</td>
+                    <td>IMMEUBLE_SEC_ACTIF_IMMEUBLE_ID</td>
+                    <td>Immeuble.csv</td>
+                </tr>
+                <tr>
+                    <td>27</td>
+                    <td>Immeuble</td>
+                    <td>IMMEUBLE_SEC_ACTIF_IMMEUBLE_NOM_FR</td>
+                    <td>Immeuble.csv</td>
+                </tr>
+                <tr>
+                    <td>28</td>
+                    <td>Immeuble</td>
+                    <td>IMMEUBLE_SEC_ACTIF_IMMEUBLE_NOM_EN</td>
+                    <td>Immeuble.csv</td>
+                </tr>
+                <tr>
+                    <td>29</td>
+                    <td>Immeuble</td>
+                    <td>IMMEUBLE_SEC_ACTIF_IMMEUBLE_ADRESSE</td>
+                    <td>Immeuble.csv</td>
+                </tr>
+                <tr>
+                    <td>30</td>
+                    <td>Immeuble</td>
+                    <td>IMMEUBLE_SEC_ACTIF_IMMEUBLE_CODE_POSTAL</td>
+                    <td>Immeuble.csv</td>
+                </tr>
+                <tr>
+                    <td>31</td>
+                    <td>Immeuble</td>
+                    <td>IMMEUBLE_SEC_ACTIF_IMMEUBLE_VILLE</td>
+                    <td>Immeuble.csv</td>
+                </tr>
+                <tr>
+                    <td>32</td>
+                    <td>Immeuble</td>
+                    <td>IMMEUBLE_SEC_ACTIF_IMMEUBLE_PAYS</td>
+                    <td>Immeuble.csv</td>
+                </tr>
+                <tr style="background: #f3e5f5;">
+                    <td colspan="4" style="background: #e1bee7; font-weight: bold;">Géographie (cols 33-34)</td>
+                </tr>
+                <tr>
+                    <td>33</td>
+                    <td>Géographie</td>
+                    <td>CONTINENT_NOM_FR</td>
+                    <td>Immeuble.csv</td>
+                </tr>
+                <tr>
+                    <td>34</td>
+                    <td>Géographie</td>
+                    <td>CONTINENT_NOM_EN</td>
+                    <td>Immeuble.csv</td>
+                </tr>
+                <tr style="background: #e3f2fd;">
+                    <td colspan="4" style="background: #bbdefb; font-weight: bold;">Filières (cols 35-46 = 12 colonnes)</td>
+                </tr>
+                <tr>
+                    <td>35</td>
+                    <td>Filière</td>
+                    <td>ID_Type</td>
+                    <td>TypeFiliere.csv</td>
+                </tr>
+                <tr>
+                    <td>36</td>
+                    <td>Filière</td>
+                    <td>LIBELLE_FR</td>
+                    <td>TypeFiliere.csv</td>
+                </tr>
+                <tr>
+                    <td>37</td>
+                    <td>Filière</td>
+                    <td>LIBELLE_EN</td>
+                    <td>TypeFiliere.csv</td>
+                </tr>
+                <tr>
+                    <td>38</td>
+                    <td>Filière</td>
+                    <td>FILIERE_FR</td>
+                    <td>Filiere.csv (ou UO_NOM si vide)</td>
+                </tr>
+                <tr>
+                    <td>39</td>
+                    <td>Filière</td>
+                    <td>FILIERE_EN</td>
+                    <td>Filiere.csv (ou UO_NOM si vide)</td>
+                </tr>
+                <tr>
+                    <td>40</td>
+                    <td>Filière</td>
+                    <td>SOUS_FILIERE_FR</td>
+                    <td>SousFiliere.csv</td>
+                </tr>
+                <tr>
+                    <td>41</td>
+                    <td>Filière</td>
+                    <td>SOUS_FILIERE_EN</td>
+                    <td>SousFiliere.csv</td>
+                </tr>
+                <tr style="color: #f44336; background: #ffebee;">
+                    <td>42-46</td>
+                    <td colspan="3" style="font-weight: bold;">Réservées pour extensions futures</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h2>9. Jointure finale – Orchestration complexe</h2>
+        
+        <div class="code-block"><code><span class="f">fusion_donnees_vers_fichier_de_sortie</span>() {
+
+  <span class="f">echo</span> <span class="s">"Étape 1 : Jonction UO + hiérarchies + filières"</span>
+  <span class="f">join</span> -t<span class="s">";"</span> -1 1 -2 1 UOTmp.csv UOHierarchy.csv \
+    <span class="o">></span> UOEnrichie.csv
+
+  <span class="f">echo</span> <span class="s">"Étape 2 : Jonction (Personne + Immeuble) + UOEnrichie"</span>
+  <span class="f">join</span> -t<span class="s">";"</span> -o <span class="s">"${TARGET_FIELDS}"</span> \
+    -1 23 -2 1 \
+    personnes_avec_immeuble.csv UOTmp2.csv \
+    <span class="o">></span> <span class="s">"$REFOG_OUTPUT_FILE_NAME"</span>
+
+  <span class="f">echo</span> <span class="s">"Étape 3 : Remplissage des filières vides avec UO_NOM"</span>
+  <span class="f">awk</span> <span class="s">'-F";"'</span> <span class="s">'{ if ($47 == "") $47 = $20 } OFS=";" { print }'</span> \
+    <span class="s">"$REFOG_OUTPUT_FILE_NAME"</span> <span class="o">></span> FinalTmp.csv
+
+  <span class="f">awk</span> <span class="s">'-F";"'</span> <span class="s">'{ if ($48 == "") $48 = $20 } OFS=";" { print }'</span> \
+    FinalTmp.csv <span class="o">></span> <span class="s">"$REFOG_OUTPUT_FILE_NAME"</span>
+
+  <span class="f">sed</span> -i <span class="s">"1i $REFOG_ENTETE"</span> <span class="s">"$REFOG_OUTPUT_FILE_NAME"</span>
+
+  <span class="f">echo</span> <span class="s">"✓ Fichier final : ImportRefog.csv (46 colonnes)"</span>
+}</code></div>
+        
+        <h2>10. Résumé – Avant et Après</h2>
+        
+        <div class="comparison">
+            <div class="comparison-box before">
+                <h3 style="margin-top: 0;">AVANT (sources séparées)</h3>
+                <ul style="margin-left: 20px;">
+                    <li><strong>Personne.csv :</strong> 28 colonnes</li>
+                    <li><strong>UO.csv :</strong> 25 colonnes</li>
+                    <li><strong>Immeuble.csv :</strong> 27 colonnes</li>
+                    <li><strong>Filiere.csv :</strong> ID seulement</li>
+                    <li><strong>UOHierarchique.csv :</strong> structure seule</li>
+                </ul>
+                <div style="margin-top: 15px; padding: 10px; background: white; border-radius: 4px; font-size: 0.9em;">
+                    ❌ Données fragmentées<br>
+                    ❌ Sans contexte hiérarchique<br>
+                    ❌ IDs non résolus
+                </div>
+            </div>
+            
+            <div class="comparison-box after">
+                <h3 style="margin-top: 0;">APRÈS (consolidated)</h3>
+                <ul style="margin-left: 20px;">
+                    <li><strong>ImportRefog.csv :</strong> 46 colonnes</li>
+                    <li>+ Hiérarchie opérationnelle</li>
+                    <li>+ Hiérarchie organisationnelle</li>
+                    <li>+ Labels filières FR/EN</li>
+                    <li>+ Localisation complète</li>
+                </ul>
+                <div style="margin-top: 15px; padding: 10px; background: white; border-radius: 4px; font-size: 0.9em;">
+                    ✅ Une seule source de vérité<br>
+                    ✅ Contexte 360° de chaque personne<br>
+                    ✅ Prête pour l'import
+                </div>
+            </div>
+        </div>
+        
+        <h2>11. Fichiers de sortie</h2>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Fichier</th>
+                    <th>Lignes</th>
+                    <th>Colonnes</th>
+                    <th>Usage</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="background: #e8f5e9;">
+                    <td><strong>ImportRefog.csv</strong></td>
+                    <td>NPER + 1</td>
+                    <td>46</td>
+                    <td>✅ FINAL – Import principal</td>
+                </tr>
+                <tr>
+                    <td><strong>ImportRefogDesact.csv</strong></td>
+                    <td>Delta</td>
+                    <td>4</td>
+                    <td>✅ FINAL – Suppressions (delta J/J-1)</td>
+                </tr>
+                <tr>
+                    <td><strong>ImportRefogDesactVieille.csv</strong></td>
+                    <td>NPER_DESACT</td>
+                    <td>4</td>
+                    <td>📦 Snapshot J-1 (pour calcul J+1)</td>
+                </tr>
+                <tr style="color: #666; background: #f5f5f5;">
+                    <td>Fichiers temporaires</td>
+                    <td colspan="3">UOHierarchy.csv, OrgaUOHierarchy.csv, TypeFiliere*.csv, etc. → supprimés</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div class="footer">
+            <p>Annexe détaillée – JoinFilesRefog.sh</p>
+            <p style="margin-top: 5px; color: #95a5a6;">Consolidation ReFOG – Structure organisationnelle enrichie</p>
+        </div>
+    </div>
+</body>
+</html>
