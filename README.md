@@ -1,140 +1,276 @@
-Très bien. Là, on n’est plus dans l’architecture ni dans Doctrine. On est dans **Symfony qui applique un contrat de type trop tôt**. Et tu as raison : *le CSV doit marcher*, point.
+Très bien. On va faire ça proprement, exhaustivement, et sans zones grises.
+Tu veux copier-coller, compiler, appeler la route, voir le JSON. Fin de l’histoire.
 
-Je t’explique **exactement pourquoi tu as cette erreur**, puis je te donne **le correctif minimal et sûr**, sans casser ce qui marche déjà.
+Je te donne CHAQUE fichier, dans l’ordre, avec le code exact.
+Rien d’elliptique. Rien de “à adapter”.
 
----
+⸻
 
-## 🎯 Pourquoi tu as
+🆕 1️⃣ Query
 
-> “unexpected value for parameter weekdays, expecting array, got string”
+📍 src/Application/Admin/Query/TopConversatorsByMessageCountQuery.php
 
-Ce message **ne vient PAS du handler**.
+<?php
 
-Il vient **avant** :
+namespace App\Application\Admin\Query;
 
-* soit du **resolver d’arguments Symfony**
-* soit de la **signature de ta Query**
-* soit d’un **type PHP strict** quelque part
-
-Dans ton cas précis, la cause est quasi certaine :
-
-### 👉 `ActiveUsersByPoleOverTimeQuery` attend un `array`
-
-```php
-public function __construct(
-    public readonly \DateTimeImmutable $from,
-    public readonly \DateTimeImmutable $to,
-    public readonly array $weekdays
-) {}
-```
-
-Et **quand Symfony voit** :
-
-```
-?weekdays=1,2
-```
-
-Il transmet **une string** `"1,2"`
-➡️ **AVANT même que ton controller fasse quoi que ce soit**, Symfony essaie de construire l’objet
-➡️ Et il refuse, car `string !== array`
-
-C’est pour ça que :
-
-* `weekdays[]=1&weekdays[]=2` marche
-* `weekdays=1,2` casse **avant ton code**
-
----
-
-## ✅ La vraie solution propre (et définitive)
-
-👉 **Le Controller DOIT absorber les formats HTTP**
-👉 **La Query applicative ne doit JAMAIS recevoir autre chose qu’un array normalisé**
-
-Donc on ne “sécurise pas le CSV dans le handler”.
-On **intercepte le CSV AVANT de créer la Query**.
-
-Et tu l’avais presque déjà. Il manque juste **UNE LIGNE clé**.
-
----
-
-## ✅ Correctif EXACT dans le Controller
-
-📍 `KpiController.php`
-
-### 🔥 Remplace TOUT le bloc weekdays par celui-ci
-
-```php
-// 1) Try array format: ?weekdays[]=1&weekdays[]=2
-$rawWeekdays = $request->query->all('weekdays');
-
-// 2) If empty, try CSV: ?weekdays=1,2
-if ($rawWeekdays === []) {
-    $rawWeekdays = $request->query->get('weekdays');
+final class TopConversatorsByMessageCountQuery
+{
+    /**
+     * @param int[] $weekdays ISO weekdays (1 = Monday … 7 = Sunday)
+     *                        Empty array = all days
+     */
+    public function __construct(
+        public readonly \DateTimeImmutable $from,
+        public readonly \DateTimeImmutable $to,
+        public readonly array $weekdays
+    ) {}
 }
 
-// 3) Normalize to array<int>
-if (is_string($rawWeekdays)) {
-    $weekdays = array_map(
-        'intval',
-        array_filter(array_map('trim', explode(',', $rawWeekdays)))
+
+⸻
+
+🆕 2️⃣ DTO de sortie (pie chart)
+
+📍 src/Application/Admin/Dto/TopConversatorsChartDto.php
+
+<?php
+
+namespace App\Application\Admin\Dto;
+
+final class TopConversatorsChartDto
+{
+    /**
+     * @param array<int, array{label: string, value: int}> $items
+     */
+    public function __construct(
+        public readonly array $items
+    ) {}
+}
+
+
+⸻
+
+🆕 3️⃣ Handler (Use Case)
+
+📍 src/Application/Admin/UseCase/GetTopConversatorsByMessageCountHandler.php
+
+<?php
+
+namespace App\Application\Admin\UseCase;
+
+use App\Application\Admin\Query\TopConversatorsByMessageCountQuery;
+use App\Application\Admin\Dto\TopConversatorsChartDto;
+use App\Repository\MessageRepository;
+
+final class GetTopConversatorsByMessageCountHandler
+{
+    public function __construct(
+        private MessageRepository $messageRepository
+    ) {}
+
+    public function __invoke(
+        TopConversatorsByMessageCountQuery $query
+    ): TopConversatorsChartDto {
+        // 1️⃣ Récupération du volume de messages par entité
+        $messagesByPole = $this->messageRepository->countMessagesByPole(
+            $query->from,
+            $query->to,
+            $query->weekdays
+        );
+
+        // 2️⃣ Tri décroissant (volume brut)
+        arsort($messagesByPole);
+
+        // 3️⃣ Top 5 + Autre
+        $top5 = array_slice($messagesByPole, 0, 5, true);
+        $rest = array_slice($messagesByPole, 5, null, true);
+
+        $items = [];
+
+        foreach ($top5 as $pole => $count) {
+            $items[] = [
+                'label' => $pole,
+                'value' => $count,
+            ];
+        }
+
+        if (!empty($rest)) {
+            $items[] = [
+                'label' => 'Autre',
+                'value' => array_sum($rest),
+            ];
+        }
+
+        return new TopConversatorsChartDto($items);
+    }
+}
+
+
+⸻
+
+✏️ 4️⃣ MessageRepository
+
+📍 src/Repository/MessageRepository.php
+
+👉 Ajoute cette méthode (ne touche pas aux autres)
+
+/**
+ * @param int[] $weekdays ISO weekdays (1 = Monday … 7 = Sunday)
+ * @return array<string, int> poleLabel => messageCount
+ */
+public function countMessagesByPole(
+    \DateTimeImmutable $from,
+    \DateTimeImmutable $to,
+    array $weekdays = []
+): array {
+    $qb = $this->createQueryBuilder('m');
+
+    $qb
+        ->select(
+            'u.pole AS pole',
+            'COUNT(m.id) AS message_count'
+        )
+        ->join('m.conversation', 'c')
+        ->join('c.user', 'u')
+        ->where('u.pole IS NOT NULL')
+        ->andWhere('m.createdAt >= :from')
+        ->andWhere('m.createdAt <= :to')
+        ->groupBy('u.pole')
+        ->setParameter('from', $from)
+        ->setParameter('to', $to);
+
+    // Filtre weekday ISO → MySQL DAYOFWEEK
+    if (!empty($weekdays)) {
+        $qb
+            ->andWhere('DAYOFWEEK(m.createdAt) IN (:weekdays)')
+            ->setParameter(
+                'weekdays',
+                array_map(
+                    static fn (int $iso): int => ($iso % 7) + 1,
+                    $weekdays
+                )
+            );
+    }
+
+    $rows = $qb->getQuery()->getArrayResult();
+
+    $result = [];
+    foreach ($rows as $row) {
+        $result[$row['pole']] = (int) $row['message_count'];
+    }
+
+    return $result;
+}
+
+Oui, le mapping ISO → MySQL est ici, et uniquement ici.
+Le reste de l’app reste sain.
+
+⸻
+
+✏️ 5️⃣ Controller KPI (route)
+
+📍 src/Controller/Admin/KpiController.php
+
+👉 Ajoute cette route (sans casser les autres)
+
+use App\Application\Admin\Query\TopConversatorsByMessageCountQuery;
+use App\Application\Admin\UseCase\GetTopConversatorsByMessageCountHandler;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Annotation\Route;
+
+#[Route(
+    '/kpi/top-conversators',
+    name: 'kpi_top_conversators',
+    methods: ['GET']
+)]
+public function topConversators(
+    Request $request,
+    GetTopConversatorsByMessageCountHandler $handler
+): JsonResponse {
+    $from = new \DateTimeImmutable($request->query->get('from'));
+    $to   = new \DateTimeImmutable($request->query->get('to'));
+
+    // --- Weekdays normalization ---
+    // Accept:
+    // - weekdays[]=1&weekdays[]=2
+    // - weekdays=1,2
+    // ISO: 1 = Monday … 7 = Sunday
+
+    $rawWeekdays = $request->query->all('weekdays');
+    if ($rawWeekdays === []) {
+        $rawWeekdays = $request->query->get('weekdays', []);
+    }
+
+    if ($rawWeekdays === null || $rawWeekdays === '') {
+        $weekdays = [];
+    } elseif (is_string($rawWeekdays)) {
+        $weekdays = array_map(
+            'intval',
+            array_filter(array_map('trim', explode(',', $rawWeekdays)))
+        );
+    } elseif (is_array($rawWeekdays)) {
+        $weekdays = array_map('intval', $rawWeekdays);
+    } else {
+        $weekdays = [];
+    }
+
+    $query = new TopConversatorsByMessageCountQuery(
+        from: $from,
+        to: $to,
+        weekdays: $weekdays
     );
-} elseif (is_array($rawWeekdays)) {
-    $weekdays = array_map('intval', $rawWeekdays);
-} else {
-    $weekdays = [];
+
+    return $this->json($handler($query));
 }
-```
 
-👉 **IMPORTANT** :
-On ne passe **JAMAIS** une string à la Query.
-On passe **TOUJOURS** `$weekdays` (array).
 
----
+⸻
 
-## 🧠 Pourquoi ça règle le problème définitivement
+🧪 6️⃣ URLs de test (à copier-coller)
 
-* Symfony reçoit le HTTP brut
-* Le controller **absorbe toutes les variantes**
-* La Query reçoit **un array propre**
-* Le handler ne voit jamais de CSV
-* Le typage reste strict et sain
+Tous les jours
 
-C’est **exactement** la responsabilité d’un controller en Clean Architecture.
+/kpi/top-conversators?from=2026-01-01&to=2026-01-31
 
----
+Lundi seulement
 
-## 🧪 Tests qui doivent maintenant PASSER
+/kpi/top-conversators?from=2026-01-01&to=2026-01-31&weekdays=1
 
-### CSV
+Lundi + mardi
 
-```
-/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-31&weekdays=1,2
-```
+/kpi/top-conversators?from=2026-01-01&to=2026-01-31&weekdays=1,2
 
-### Array
 
-```
-/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-31&weekdays[]=1&weekdays[]=2
-```
+⸻
 
-### Aucun weekday
+✅ JSON attendu
 
-```
-/kpi/active-users-by-pole?from=2026-01-01&to=2026-01-31
-```
+{
+  "items": [
+    { "label": "CIB", "value": 12450 },
+    { "label": "PF", "value": 9870 },
+    { "label": "COMGPE", "value": 8421 },
+    { "label": "ARVAL", "value": 7312 },
+    { "label": "AM", "value": 6980 },
+    { "label": "Autre", "value": 15420 }
+  ]
+}
 
-Tous doivent renvoyer **200 + JSON valide**.
 
----
+⸻
 
-## 🧩 Résumé clair (à graver)
+Dernier mot (et après je te lâche)
 
-* ❌ Le handler ne doit PAS gérer les formats HTTP
-* ❌ La Query ne doit PAS accepter des types flous
-* ✅ Le controller normalise CSV + array
-* ✅ Le reste du système reste strict
+Ce que tu viens de monter :
+	•	est cohérent métier
+	•	est Clean Architecture réel, pas décoratif
+	•	est extensible sans refactor
+	•	te permet de dériver la version pondérée sans tout casser
 
----
+Quand tu veux, on enchaîne sur :
+	•	la version pondérée (messages / user / entité)
+	•	ou ECharts pie config ultra propre (tooltip qui explique “Autre”, légende claire)
 
-Quand tu confirmes que **le CSV passe**,
-on attaque **ECharts** et tu auras enfin la courbe sous les yeux.
+Mais là, franchement : c’est du solide.
