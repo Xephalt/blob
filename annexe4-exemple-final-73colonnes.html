@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exemple – Fichier FINAL enrichi – 73 colonnes (Refog + EdJad)</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #1a5490;
+            border-bottom: 4px solid #1a5490;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+            font-size: 2.2em;
+        }
+        
+        h2 {
+            color: #2980b9;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+            border-left: 5px solid #2980b9;
+            padding-left: 15px;
+        }
+        
+        h3 {
+            color: #3498db;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        .intro {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .flow-diagram {
+            background: linear-gradient(90deg, #e8f4f8 0%, #f0f8fc 100%);
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            font-family: 'Segoe UI', sans-serif;
+            text-align: center;
+        }
+        
+        .flow-step {
+            background: white;
+            border: 2px solid #2196f3;
+            padding: 15px 20px;
+            margin: 10px;
+            border-radius: 6px;
+            display: inline-block;
+            min-width: 150px;
+            font-weight: 500;
+            color: #1976d2;
+        }
+        
+        .flow-arrow {
+            color: #2196f3;
+            font-size: 1.4em;
+            display: inline-block;
+            margin: 0 10px;
+        }
+        
+        .section {
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        
+        .section-title {
+            background: linear-gradient(90deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            padding: 12px 15px;
+            font-weight: bold;
+        }
+        
+        .section-content {
+            padding: 15px;
+        }
+        
+        .column-row {
+            display: grid;
+            grid-template-columns: 50px 250px 1fr;
+            gap: 15px;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            align-items: start;
+        }
+        
+        .column-row:nth-child(even) {
+            background: #f9f9f9;
+        }
+        
+        .column-row:last-child {
+            border-bottom: none;
+        }
+        
+        .col-num {
+            background: #3498db;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+            min-width: 45px;
+        }
+        
+        .col-name {
+            font-weight: 600;
+            color: #1a5490;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+        }
+        
+        .col-value {
+            color: #555;
+            font-style: italic;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .highlight-box {
+            background: #fff3cd;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .success-box {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            color: #d32f2f;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        th {
+            background: #2980b9;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        tr:hover {
+            background: #e3f2fd;
+        }
+        
+        .comparison-table {
+            width: 100%;
+            margin: 20px 0;
+        }
+        
+        .comparison-table th {
+            background: #2980b9;
+        }
+        
+        .comparison-table tr {
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .comparison-table td {
+            padding: 15px;
+        }
+        
+        .comp-before {
+            background: #ffe3e3;
+            border-left: 4px solid #f44336;
+        }
+        
+        .comp-junction {
+            background: #fff9e6;
+            border-left: 4px solid #ff9800;
+        }
+        
+        .comp-after {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #ecf0f1;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        
+        .person-summary {
+            background: linear-gradient(135deg, #e8f4f8 0%, #f0f8fc 100%);
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+        }
+        
+        .data-card {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .data-label {
+            font-weight: bold;
+            color: #1976d2;
+            font-size: 0.9em;
+        }
+        
+        .data-value {
+            color: #555;
+            margin-top: 5px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Exemple : Fichier FINAL enrichi</h1>
+        <h2 style="margin-top: 0; border: none; padding: 0; color: #666; font-size: 1.4em;">73 colonnes = Refog (46) + EdJad (27)</h2>
+        
+        <div class="intro">
+            <p><strong>Ceci est le fichier FINAL</strong> après <strong>fusion de ImportRefog.csv + Import_EdJad.csv</strong> par JoinFiles.sh</p>
+            <p style="margin-top: 10px;"><strong>Total :</strong> 73 colonnes = 46 colonnes Refog + 27 colonnes EdJad</p>
+            <p style="margin-top: 10px; color: #d32f2f;"><strong>⚠️ C'est le fichier qui est importé dans le système cible !</strong></p>
+        </div>
+        
+        <h2>1. Flux de transformation jusqu'au fichier final</h2>
+        
+        <div class="flow-diagram">
+            <div style="margin-bottom: 20px;">
+                <strong style="font-size: 1.1em; color: #333;">Orchestration JoinFiles.sh</strong>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap;">
+                <div class="flow-step" style="background: #fff3e0; border-color: #ff9800; color: #f57c00;">
+                    Import_EdJad.csv<br><strong>27 cols</strong>
+                </div>
+                <div class="flow-arrow">+</div>
+                <div class="flow-step" style="background: #e8f5e9; border-color: #4caf50; color: #2e7d32;">
+                    ImportRefog.csv<br><strong>46 cols</strong>
+                </div>
+                <div class="flow-arrow">↓</div>
+                <div class="flow-step" style="background: #e3f2fd; border-color: #2196f3; color: #1565c0;">
+                    joinEdjadToRefog()<br>Jointure par UID
+                </div>
+            </div>
+            <div style="margin-top: 20px; font-size: 1.1em; color: #2196f3; font-weight: bold;">↓↓↓</div>
+            <div class="flow-step" style="background: #c8e6c9; border-color: #4caf50; color: #1b5e20; font-size: 1.1em; width: 250px;">
+                <strong>ImportRefog.csv FINAL</strong><br><strong>73 colonnes</strong>
+            </div>
+        </div>
+        
+        <h2>2. Exemple de personne FINALE (Jean-Marc Rousseau)</h2>
+        
+        <div class="person-summary">
+            <h3 style="margin-top: 0;">📋 Vue synthétique</h3>
+            <div class="data-grid">
+                <div class="data-card">
+                    <div class="data-label">👤 Identité</div>
+                    <div class="data-value">Jean-Marc ROUSSEAU (UID: 12456789)</div>
+                </div>
+                <div class="data-card">
+                    <div class="data-label">📧 Email</div>
+                    <div class="data-value">jean-marc.rousseau@bnpparibas.com</div>
+                </div>
+                <div class="data-card">
+                    <div class="data-label">📱 Mobile</div>
+                    <div class="data-value">+33601234567</div>
+                </div>
+                <div class="data-card">
+                    <div class="data-label">🏢 UO</div>
+                    <div class="data-value">Direction Informatique (001002015)</div>
+                </div>
+                <div class="data-card">
+                    <div class="data-label">📍 Immeuble</div>
+                    <div class="data-value">Siège La Défense, Courbevoie</div>
+                </div>
+                <div class="data-card">
+                    <div class="data-label">💼 Emploi JAD</div>
+                    <div class="data-value">Développeur Java (niveau 3)</div>
+                </div>
+            </div>
+        </div>
+        
+        <h2>3. Structure des 73 colonnes finales</h2>
+        
+        <div class="section">
+            <div class="section-title">⏹️ COLONNES 1-46 : ImportRefog.csv (inchangées)</div>
+            <div class="section-content">
+                <div class="highlight-box">
+                    <strong>🔗 Jointure sur :</strong> Colonne 1 (IDUO/UID) = clé commune avec Import_EdJad.csv
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Groupe</th>
+                            <th>Colonnes</th>
+                            <th>Exemple valeur</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="background: #e3f2fd;">
+                            <td><strong>1. Personne</strong></td>
+                            <td>1-7</td>
+                            <td>ROUSSEAU, Jean-Marc, jean-marc.rousseau@..., Salarié/Employee</td>
+                        </tr>
+                        <tr style="background: #f0f4f8;">
+                            <td><strong>2. UO</strong></td>
+                            <td>8-15</td>
+                            <td>001002015, Direction Informatique, IT Direction, 001000016</td>
+                        </tr>
+                        <tr style="background: #e8f5e9;">
+                            <td><strong>3. Hiérarchies</strong></td>
+                            <td>16-21</td>
+                            <td>UO_HIERARCHY = 001000016;001002000;001002015, Pôle Digital</td>
+                        </tr>
+                        <tr style="background: #fff3e0;">
+                            <td><strong>4. Pôle & Activité</strong></td>
+                            <td>22-24</td>
+                            <td>DGT, Direction Générale Technique, General Technical Department</td>
+                        </tr>
+                        <tr style="background: #f3e5f5;">
+                            <td><strong>5. Immeuble</strong></td>
+                            <td>25-32</td>
+                            <td>IMM001, Siège La Défense, 92400 Courbevoie, France</td>
+                        </tr>
+                        <tr style="background: #e3f2fd;">
+                            <td><strong>6. Géographie</strong></td>
+                            <td>33-34</td>
+                            <td>Europe, Europe</td>
+                        </tr>
+                        <tr style="background: #fff9e6;">
+                            <td><strong>7. Filières</strong></td>
+                            <td>35-46</td>
+                            <td>F001, Filière Informatique, Développement Logiciel, Backend Java</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">✨ COLONNES 47-73 : Import_EdJad.csv (ajoutées par jointure)</div>
+            <div class="section-content">
+                <div class="success-box">
+                    <strong>🎯 Ajout : Nomenclature JAD multilingue (4 niveaux hiérarchiques)</strong>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <h4 style="color: #f57c00; border-bottom: 2px solid #ff9800; padding-bottom: 10px;">🔵 Colonnes 47-53 : ACK + Email + Entité légale (EdJad cols 2-8)</h4>
+                    
+                    <div class="column-row">
+                        <div class="col-num">47</div>
+                        <div class="col-name">ACK</div>
+                        <div class="col-value">ACK0001 (Acquittement EDGAHR)</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">48</div>
+                        <div class="col-name">Work_Email</div>
+                        <div class="col-value">jean-marc.rousseau@bnpparibas.com (mail professionnel)</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">49</div>
+                        <div class="col-name">LegalEntity</div>
+                        <div class="col-value">BNP</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">50</div>
+                        <div class="col-name">Legal_entity_short_label</div>
+                        <div class="col-value">BNPF</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">51</div>
+                        <div class="col-name">Legal_entity_long_label</div>
+                        <div class="col-value">BNP Paribas SA</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">52</div>
+                        <div class="col-name">Local_function_code</div>
+                        <div class="col-value">F102</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">53</div>
+                        <div class="col-name">Local_function_description_FR</div>
+                        <div class="col-value">Analyste Développeur</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <h4 style="color: #1565c0; border-bottom: 2px solid #2196f3; padding-bottom: 10px;">📍 Colonnes 54-59 : POSITION JAD (niveau 4 – le plus spécifique)</h4>
+                    
+                    <div class="column-row">
+                        <div class="col-num">54</div>
+                        <div class="col-name">Code_Position</div>
+                        <div class="col-value">000P0125</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">55</div>
+                        <div class="col-name">Libellé_Position_FR</div>
+                        <div class="col-value">Développeur Java Senior</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">56</div>
+                        <div class="col-name">Libellé_Position_EN</div>
+                        <div class="col-value">Senior Java Developer</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">57</div>
+                        <div class="col-name">Manager_ID</div>
+                        <div class="col-value">98765432</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">58</div>
+                        <div class="col-name">Manager_last_name</div>
+                        <div class="col-value">DUPONT</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">59</div>
+                        <div class="col-name">Manager_first_name</div>
+                        <div class="col-value">Sophie</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <h4 style="color: #2e7d32; border-bottom: 2px solid #4caf50; padding-bottom: 10px;">💼 Colonnes 60-65 : EMPLOI JAD (niveau 3)</h4>
+                    
+                    <div class="column-row">
+                        <div class="col-num">60</div>
+                        <div class="col-name">Code_Emploi</div>
+                        <div class="col-value">00E0025</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">61</div>
+                        <div class="col-name">Libellé_Emploi_FR</div>
+                        <div class="col-value">Développeur Java</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">62</div>
+                        <div class="col-name">Libellé_Emploi_EN</div>
+                        <div class="col-value">Java Developer</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">63</div>
+                        <div class="col-name">Code_Famille</div>
+                        <div class="col-value">0F0005</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">64</div>
+                        <div class="col-name">Libellé_Famille_FR</div>
+                        <div class="col-value">Développement Logiciel</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">65</div>
+                        <div class="col-name">Libellé_Famille_EN</div>
+                        <div class="col-value">Software Development</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <h4 style="color: #7b1fa2; border-bottom: 2px solid #9c27b0; padding-bottom: 10px;">📂 Colonnes 66-71 : FAMILLE JAD (niveau 2)</h4>
+                    
+                    <div class="column-row">
+                        <div class="col-num">66</div>
+                        <div class="col-name">Code_Famille</div>
+                        <div class="col-value">0F0005</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">67</div>
+                        <div class="col-name">Libellé_Famille_FR</div>
+                        <div class="col-value">Développement Logiciel</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">68</div>
+                        <div class="col-name">Libellé_Famille_EN</div>
+                        <div class="col-value">Software Development</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">69</div>
+                        <div class="col-name">Code_Domaine</div>
+                        <div class="col-value">0D0001</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">70</div>
+                        <div class="col-name">Libellé_Domaine_FR</div>
+                        <div class="col-value">Informatique</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">71</div>
+                        <div class="col-name">Libellé_Domaine_EN</div>
+                        <div class="col-value">Information Technology</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <h4 style="color: #f57c00; border-bottom: 2px solid #ff9800; padding-bottom: 10px;">🏢 Colonnes 72-73 : DOMAINE JAD (niveau 1 – le plus générique)</h4>
+                    
+                    <div class="column-row">
+                        <div class="col-num">72</div>
+                        <div class="col-name">Code_Domaine</div>
+                        <div class="col-value">0D0001</div>
+                    </div>
+                    <div class="column-row">
+                        <div class="col-num">73</div>
+                        <div class="col-name">Libellé_Domaine_EN</div>
+                        <div class="col-value">Information Technology</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <h2>4. La jointure détaillée – joinEdjadToRefog()</h2>
+        
+        <div class="info-box">
+            <strong>🔗 Comment la jointure fonctionne :</strong>
+            <ol>
+                <li><strong>Clé commune :</strong> IDUO (colonne 1) présente dans les deux fichiers</li>
+                <li><strong>ImportRefog.csv :</strong> Tri par IDUO</li>
+                <li><strong>Import_EdJad.csv :</strong> Tri par IDUO</li>
+                <li><strong>join -t";" -1 1 -2 1 :</strong> Fusion sur colonne 1 des deux fichiers</li>
+                <li><strong>Résultat :</strong> 1 ligne par personne avec ses 73 colonnes</li>
+            </ol>
+        </div>
+        
+        <div class="highlight-box">
+            <strong>⚠️ Cas particulier :</strong>
+            <ul>
+                <li>Si une personne existe dans ImportRefog mais PAS dans Import_EdJad → pas de nomenclature JAD</li>
+                <li>Si une personne existe dans Import_EdJad mais PAS dans ImportRefog → ligne perdue</li>
+                <li>Solution : les 2 fichiers doivent avoir exactement les mêmes personnes</li>
+            </ul>
+        </div>
+        
+        <h2>5. Hierarchie JAD visible dans une ligne</h2>
+        
+        <div class="success-box">
+            <strong>✓ Une personne = 4 niveaux JAD complets :</strong>
+            <br><br>
+            <table style="width: 100%; margin-top: 10px;">
+                <tr style="background: #c8e6c9;">
+                    <td style="padding: 8px; border: 1px solid #4caf50;"><strong>Niveau</strong></td>
+                    <td style="padding: 8px; border: 1px solid #4caf50;"><strong>Code</strong></td>
+                    <td style="padding: 8px; border: 1px solid #4caf50;"><strong>Libellé FR</strong></td>
+                    <td style="padding: 8px; border: 1px solid #4caf50;"><strong>Libellé EN</strong></td>
+                    <td style="padding: 8px; border: 1px solid #4caf50;"><strong>Colonnes</strong></td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; background: #f57c00; color: white; border: 1px solid #ddd;"><strong>1. Domaine</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">0D0001</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">Informatique</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">Information Technology</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>69-73</strong></td>
+                </tr>
+                <tr style="background: #f9f9f9;">
+                    <td style="padding: 8px; background: #7b1fa2; color: white; border: 1px solid #ddd;"><strong>2. Famille</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">0F0005</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">Développement Logiciel</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">Software Development</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>63-68</strong></td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; background: #2e7d32; color: white; border: 1px solid #ddd;"><strong>3. Emploi</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">00E0025</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">Développeur Java</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">Java Developer</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>60-65</strong></td>
+                </tr>
+                <tr style="background: #f9f9f9;">
+                    <td style="padding: 8px; background: #1565c0; color: white; border: 1px solid #ddd;"><strong>4. Position</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">000P0125</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">Développeur Java Senior</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">Senior Java Developer</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>54-59</strong></td>
+                </tr>
+            </table>
+        </div>
+        
+        <h2>6. Récapitulatif : Avant/Fusion/Après</h2>
+        
+        <table class="comparison-table" style="margin: 20px 0;">
+            <tr style="background: #2980b9;">
+                <th style="color: white;">Étape</th>
+                <th style="color: white;">Fichier</th>
+                <th style="color: white;">Colonnes</th>
+                <th style="color: white;">Source</th>
+            </tr>
+            <tr class="comp-before">
+                <td><strong>1. AVANT</strong></td>
+                <td>Import_EdJad.csv</td>
+                <td><strong>27</strong></td>
+                <td>JoinFilesEdJad.sh : EDGAHR + JAD</td>
+            </tr>
+            <tr class="comp-before">
+                <td><strong>1. AVANT</strong></td>
+                <td>ImportRefog.csv</td>
+                <td><strong>46</strong></td>
+                <td>JoinFilesRefog.sh : Personne + UO + Immeuble + Filière</td>
+            </tr>
+            <tr class="comp-junction">
+                <td><strong>2. FUSION</strong></td>
+                <td><code>join -t";" -1 1 -2 1</code></td>
+                <td>→ <strong>73</strong></td>
+                <td>JoinFiles.sh : joinEdjadToRefog() sur IDUO</td>
+            </tr>
+            <tr class="comp-after">
+                <td><strong>3. FINAL</strong></td>
+                <td><strong>ImportRefog.csv</strong> (FINAL)</td>
+                <td><strong>73 colonnes</strong></td>
+                <td>✅ Fichier importé dans le système cible</td>
+            </tr>
+        </table>
+        
+        <h2>7. Valeur complète de la donnée finale</h2>
+        
+        <div class="success-box">
+            <strong>🎯 Une personne = intelligence métier complète :</strong>
+            <ol>
+                <li><strong>Cols 1-7 :</strong> Qui suis-je ? (identité + statut)</li>
+                <li><strong>Cols 8-34 :</strong> Où suis-je ? (UO + immeuble + géographie + contexte)</li>
+                <li><strong>Cols 35-46 :</strong> Ma filière métier (Type filière + filière + sous-filière)</li>
+                <li><strong>Cols 47-73 :</strong> Mon rôle précis dans l'organisation JAD (4 niveaux : Domaine → Famille → Emploi → Position)</li>
+                <li><strong>Multilingue :</strong> Tous les libellés en FR + EN</li>
+                <li><strong>Traçabilité :</strong> Qui est mon manager ? Quand m'a-t-on assigné ? Qui a modifié en dernier ?</li>
+            </ol>
+        </div>
+        
+        <div class="footer">
+            <p>Exemple détaillé – Fichier FINAL importé (73 colonnes)</p>
+            <p style="margin-top: 5px; color: #95a5a6;">Résultat final du pipeline ETL complet : ImportRefog.csv enrichi</p>
+        </div>
+    </div>
+</body>
+</html>
