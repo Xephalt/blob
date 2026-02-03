@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Annexe - JoinFilesEdJad.sh - Enrichissement RH et Nomenclature JAD</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #1a5490;
+            border-bottom: 4px solid #1a5490;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+            font-size: 2.2em;
+        }
+        
+        h2 {
+            color: #2980b9;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+            border-left: 5px solid #2980b9;
+            padding-left: 15px;
+        }
+        
+        h3 {
+            color: #3498db;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        .intro {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            overflow-x: auto;
+            border-left: 5px solid #ff9800;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), inset 0 1px 3px rgba(0, 0, 0, 0.3);
+            border: 1px solid #333;
+            position: relative;
+        }
+        
+        .code-block code {
+            background: none;
+            padding: 0;
+            border-radius: 0;
+            color: #d4d4d4;
+            font-size: 13px;
+            display: block;
+            white-space: pre;
+            word-break: normal;
+            word-wrap: normal;
+        }
+        
+        .code-block::before {
+            content: "sh";
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            font-size: 11px;
+            color: #666;
+            background: #333;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        
+        .k { color: #569cd6; font-weight: bold; }
+        .s { color: #ce9178; }
+        .c { color: #6a9955; font-style: italic; }
+        .v { color: #9cdcfe; }
+        .f { color: #dcdcaa; }
+        .n { color: #b5cea8; }
+        .o { color: #d4d4d4; }
+        
+        .flow-diagram {
+            background: #f8f9fa;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.8;
+            white-space: pre;
+            overflow-x: auto;
+            color: #333;
+            text-align: left;
+        }
+        
+        .hierarchy-diagram {
+            background: linear-gradient(135deg, #e8f4f8 0%, #f0f8fc 100%);
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            font-family: 'Segoe UI', sans-serif;
+            line-height: 2;
+            text-align: center;
+        }
+        
+        .level {
+            background: white;
+            border: 2px solid #2196f3;
+            padding: 10px 15px;
+            margin: 10px 0;
+            border-radius: 6px;
+            display: inline-block;
+            min-width: 150px;
+            font-weight: 500;
+            color: #1976d2;
+        }
+        
+        .level.l1 { background: #fff3e0; border-color: #ff9800; color: #f57c00; font-size: 1.1em; font-weight: bold; }
+        .level.l2 { background: #f3e5f5; border-color: #9c27b0; color: #7b1fa2; }
+        .level.l3 { background: #e3f2fd; border-color: #2196f3; color: #1565c0; }
+        .level.l4 { background: #f1f8e9; border-color: #4caf50; color: #2e7d32; }
+        
+        .arrow {
+            color: #2196f3;
+            font-size: 1.3em;
+            margin: 0 10px;
+        }
+        
+        .section-block {
+            background: #f0f4f8;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 5px solid #3498db;
+        }
+        
+        .highlight-box {
+            background: #fff3cd;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .warning {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .warning::before {
+            content: "⚠️ ";
+            font-weight: bold;
+        }
+        
+        ul, ol {
+            margin-left: 25px;
+            margin-bottom: 20px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+        }
+        
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            color: #d32f2f;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        th {
+            background: #2980b9;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        tr:hover {
+            background: #e3f2fd;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #ecf0f1;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        
+        .data-flow {
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f0f4f8;
+            border-radius: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .data-flow-box {
+            background: white;
+            border: 2px solid #3498db;
+            padding: 15px 20px;
+            margin: 10px;
+            border-radius: 6px;
+            font-weight: 500;
+            color: #1976d2;
+        }
+        
+        .data-flow-arrow {
+            color: #3498db;
+            font-size: 1.5em;
+            margin: 0 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Annexe - JoinFilesEdJad.sh</h1>
+        <h2 style="margin-top: 0; border: none; padding: 0; color: #666; font-size: 1.4em;">Enrichissement EDGAHR avec nomenclature JAD</h2>
+        
+        <div class="intro">
+            <p><strong>JoinFilesEdJad.sh</strong> enrichit les données RH (EDGAHR) avec la <strong>nomenclature métier JAD</strong> (Job Architecture Diagramm) :</p>
+            <ul>
+                <li>✓ Extrait les références JAD à 4 niveaux hiérarchiques</li>
+                <li>✓ Récupère les libellés multilingues (FR/EN)</li>
+                <li>✓ Effectue 4 jointures successives (Position → Emploi → Famille → Domaine)</li>
+                <li>✓ Produit <code>Import_EdJad.csv</code> avec 27 colonnes enrichies</li>
+            </ul>
+        </div>
+        
+        <h2>1. Vue globale du flux</h2>
+        
+        <div class="flow-diagram">EDGAHR.csv (16 colonnes)          JAD_JL.csv (hiérarchie)
+        ↓                                ↓
+        Vérification d'intégrité    Extraction 4 niveaux
+        ↓                                ↓
+        Tri et filtrage            Extraction labels FR/EN
+        ↓                                ↓
+        +────────────────────────────────+
+        ↓
+        Jointure Position (niveau 4)
+        ↓
+        Jointure Emploi (niveau 3)
+        ↓
+        Jointure Famille (niveau 2)
+        ↓
+        Jointure Domaine (niveau 1)
+        ↓
+        Nettoyage + En-tête
+        ↓
+        Import_EdJad.csv (27 colonnes)</div>
+        
+        <h2>2. Comprendre la nomenclature JAD – 4 niveaux hiérarchiques</h2>
+        
+        <div class="hierarchy-diagram">
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 1.1em; font-weight: bold; color: #333; margin-bottom: 10px;">Hiérarchie JAD (du plus générique au plus spécifique) :</div>
+            </div>
+            
+            <div>
+                <span class="level l1">🏢 Domaine</span>
+                <span class="arrow">↓</span>
+                <span class="level l2">📂 Famille</span>
+                <span class="arrow">↓</span>
+                <span class="level l3">💼 Emploi</span>
+                <span class="arrow">↓</span>
+                <span class="level l4">📍 Position</span>
+            </div>
+            
+            <div style="margin-top: 20px; padding: 15px; background: white; border-radius: 6px; text-align: left;">
+                <strong>Exemple concret :</strong>
+                <ul style="margin-left: 20px; margin-top: 10px;">
+                    <li><span style="color: #f57c00; font-weight: bold;">Domaine :</span> "Informatique"</li>
+                    <li><span style="color: #7b1fa2; font-weight: bold;">Famille :</span> "Développement"</li>
+                    <li><span style="color: #1565c0; font-weight: bold;">Emploi :</span> "Développeur Java"</li>
+                    <li><span style="color: #2e7d32; font-weight: bold;">Position :</span> "Senior Java Developer – équipe backend"</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="info-box">
+            <strong>🎯 Utilité :</strong>
+            <ul>
+                <li>Normaliser les classifications métier</li>
+                <li>Permettre les analyses RH par niveau hiérarchique</li>
+                <li>Offrir des libellés multilingues (français/anglais)</li>
+                <li>Créer une nomenclature commune pour tous les collaborateurs</li>
+            </ul>
+        </div>
+        
+        <h2>3. Transformation des données - Diagramme détaillé</h2>
+        
+        <div class="data-flow">
+            <div class="data-flow-box">EDGAHR<br>16 cols</div>
+            <div class="data-flow-arrow">+</div>
+            <div class="data-flow-box">JAD<br>Refs</div>
+            <div class="data-flow-arrow">→</div>
+            <div class="data-flow-box">Join<br>Position</div>
+            <div class="data-flow-arrow">→</div>
+            <div class="data-flow-box">Join<br>Emploi</div>
+        </div>
+        
+        <div class="data-flow">
+            <div class="data-flow-box" style="opacity: 0;">.</div>
+            <div class="data-flow-arrow" style="opacity: 0;">→</div>
+            <div class="data-flow-box">Join<br>Famille</div>
+            <div class="data-flow-arrow">→</div>
+            <div class="data-flow-box">Join<br>Domaine</div>
+            <div class="data-flow-arrow">→</div>
+            <div class="data-flow-box">EdJad<br>27 cols</div>
+        </div>
+        
+        <h2>4. Fonction principale – processEdjad()</h2>
+        
+        <div class="code-block"><code><span class="f">processEdjad</span>() {
+
+  <span class="f">echo</span> <span class="s">"$(date +%F_%T) Lancement du processing Edgahr+Jad"</span>
+
+  <span class="f">check_input_files</span>          <span class="c"># Vérifier EDGAHR + JAD présents</span>
+  <span class="f">clean_tmp_files</span>            <span class="c"># Nettoyer fichiers temporaires</span>
+  <span class="f">extract_refs</span>                <span class="c"># Extraire 4 niveaux JAD</span>
+  <span class="f">extract_domaines</span>           <span class="c"># Domaines + labels FR/EN</span>
+  <span class="f">extract_familles</span>           <span class="c"># Familles + labels FR/EN</span>
+  <span class="f">extract_emplois</span>            <span class="c"># Emplois + labels FR/EN</span>
+  <span class="f">extract_positions</span>          <span class="c"># Positions + labels FR/EN</span>
+  <span class="f">produce_tmp_output_file</span>    <span class="c"># 4 jointures successives</span>
+  <span class="f">add_lines_without_position</span> <span class="c"># Gérer cas exceptionnels</span>
+  <span class="f">format_fields</span>              <span class="c"># Nettoyer la mise en forme</span>
+  <span class="f">produce_final_output_file</span>  <span class="c"># Ajouter en-tête + export</span>
+
+  <span class="f">echo</span> <span class="s">"$(date +%F_%T) Fin du processing Edgahr+Jad"</span>
+}</code></div>
+        
+        <h2>5. Extraction des références JAD - extract_refs()</h2>
+        
+        <div class="highlight-box">
+            <strong>▶ Objectif :</strong> Extraire les 4 niveaux hiérarchiques du fichier JAD
+            <br><br>
+            <strong>▶ Logique :</strong>
+            <ol>
+                <li>Filtrer les lignes avec tous les 4 niveaux (Position)</li>
+                <li>Extraire juste les codes (sans les libellés)</li>
+                <li>Créer une table de référence indexée par Position</li>
+            </ol>
+        </div>
+        
+        <div class="code-block"><code><span class="f">extract_refs</span>() {
+  <span class="f">echo</span> <span class="s">"Extraction des références JAD..."</span>
+  
+  <span class="f">cat</span> <span class="s">"$JAD_FILE"</span> | \
+    <span class="f">grep</span> -e <span class="s">"$REGEXP_POSITION"</span> | \        <span class="c"># 4 niveaux</span>
+    <span class="f">grep</span> -v -e <span class="s">"$REGEXP_EMPLOI"</span> | \    <span class="c"># Exclure 3 niveaux</span>
+    <span class="f">awk</span> <span class="s">'BEGIN {FS=OFS=";"} {
+      printf("%s%s;%s%s;%s%s;%s%s\n",
+      "000",$JAD_FIELD_CodePoste,
+      "00",$JAD_FIELD_CodeEmploi,
+      "0",$JAD_FIELD_CodeFamille,
+      "",$JAD_FIELD_CodeDomaine)
+    }'</span> | \
+    <span class="f">sort</span> -t<span class="s">";"</span> -k 1 | <span class="f">uniq</span> <span class="o">></span> <span class="s">"$JAD_EXTRACT_REFS"</span>
+
+  <span class="f">check_not_empty</span> <span class="s">"$JAD_EXTRACT_REFS"</span>
+}</code></div>
+        
+        <h2>6. Extraction des domaines – extract_domaines()</h2>
+        
+        <div class="info-box">
+            <strong>📌 Processus :</strong>
+            <ol>
+                <li>Filtrer les lignes Domaine (niveau 1)</li>
+                <li>Extraire séparément les versions FR et EN</li>
+                <li>Faire une jointure pour aligner les libellés</li>
+                <li>Résultat : <code>CodeDomaine;LibelleFR;LibelleEN</code></li>
+            </ol>
+        </div>
+        
+        <div class="code-block"><code><span class="f">extract_domaines</span>() {
+  <span class="f">echo</span> <span class="s">"Extraction des domaines JAD..."</span>
+
+  <span class="f">cat</span> <span class="s">"$JAD_FILE"</span> | \
+    <span class="f">grep</span> -e <span class="s">"$REGEXP_DOMAINE"</span> | \
+    <span class="f">awk</span> <span class="s">'BEGIN {FS=OFS=";"} {
+      printf("%s%s;%s\n",
+        "",$JAD_FIELD_CodeDomaine,$JAD_FIELD_LibelleLong)
+    }'</span> <span class="o">></span> <span class="s">"TMP_$JAD_EXTRACT_DOMAINE_FILE"</span>
+
+  <span class="c"># Séparer FR et EN</span>
+  <span class="f">cat</span> <span class="s">"TMP_$JAD_EXTRACT_DOMAINE_FILE"</span> | \
+    <span class="f">grep</span> -e <span class="s">"^[^;]*;[^;]*;FR"</span> | \
+    <span class="f">sort</span> -t<span class="s">";"</span> -k 1 <span class="o">></span> <span class="s">"$JAD_EXTRACT_DOMAINE_FR_FILE"</span>
+
+  <span class="f">cat</span> <span class="s">"TMP_$JAD_EXTRACT_DOMAINE_FILE"</span> | \
+    <span class="f">grep</span> -e <span class="s">"^[^;]*;[^;]*;EN"</span> | \
+    <span class="f">sort</span> -t<span class="s">";"</span> -k 1 <span class="o">></span> <span class="s">"$JAD_EXTRACT_DOMAINE_EN_FILE"</span>
+
+  <span class="c"># Jointure : aligner les libellés FR et EN</span>
+  <span class="f">join</span> -t<span class="s">";"</span> -o <span class="s">"1.1,2.2,2.2"</span> \
+    -1 1 -2 1 \
+    <span class="s">"$JAD_EXTRACT_DOMAINE_FR_FILE"</span> \
+    <span class="s">"$JAD_EXTRACT_DOMAINE_EN_FILE"</span> <span class="o">></span> <span class="s">"$JAD_EXTRACT_DOMAINE_FILE"</span>
+
+  <span class="f">check_not_empty</span> <span class="s">"$JAD_EXTRACT_DOMAINE_FILE"</span>
+}</code></div>
+        
+        <h2>7. Jointure des données - add_jad_ref_fields()</h2>
+        
+        <div class="section-block">
+            <strong>Fonction générique pour ajouter une couche JAD :</strong>
+            <ul>
+                <li>Prend en entrée : données EDGAHR + fichier de références JAD</li>
+                <li>Effectue une jointure sur le code</li>
+                <li>Ajoute les 3 colonnes : Code, Libellé FR, Libellé EN</li>
+                <li>Utilisée 4 fois : Position → Emploi → Famille → Domaine</li>
+            </ul>
+        </div>
+        
+        <div class="code-block"><code><span class="f">add_jad_ref_fields</span>() {
+
+  <span class="c"># $1 : type (position, emploi, famille, domaine)</span>
+  <span class="c"># $2 : liste des champs existants</span>
+  <span class="c"># $3 : fichier à compléter</span>
+  <span class="c"># $4 : champ de jointure</span>
+  <span class="c"># $5 : fichier JAD</span>
+  <span class="c"># $6 : fichier de sortie</span>
+
+  <span class="f">echo</span> <span class="s">"Tri du fichier $3 sur le champs $4"</span>
+  <span class="f">cat</span> <span class="s">"$3"</span> | <span class="f">sort</span> -t<span class="s">";"</span> -k <span class="s">"$4"</span> <span class="o">></span> <span class="s">"SORTED_$3"</span>
+
+  <span class="f">echo</span> <span class="s">"Ajout des champs $1 ..."</span>
+  <span class="f">join</span> -t<span class="s">";"</span> \
+    -o <span class="s">"$(echo "$2" | sed "s/NEW_FIELDS_HERE/$JAD_FIELDS/")"</span> \
+    -1 <span class="s">"$4"</span> -2 <span class="n">1</span> \
+    <span class="s">"SORTED_$3"</span> <span class="s">"$5"</span> <span class="o">></span> <span class="s">"$6"</span>
+
+  <span class="f">check_not_empty</span> <span class="s">"$6"</span>
+  <span class="f">rm</span> -f <span class="s">"SORTED_$3"</span>
+}</code></div>
+        
+        <h2>8. Structure des colonnes de sortie</h2>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Groupe</th>
+                    <th>Colonnes</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="background: #e3f2fd;">
+                    <td colspan="3" style="background: #bbdefb; font-weight: bold;">Données EDGAHR (colonnes 1-16)</td>
+                </tr>
+                <tr>
+                    <td>Identifiant</td>
+                    <td>1. IDpeople, 2. ACK, 3. Work_Email</td>
+                    <td>EDGAHR.csv</td>
+                </tr>
+                <tr>
+                    <td>Entité légale</td>
+                    <td>4-6. LegalEntity, codes, labels</td>
+                    <td>EDGAHR.csv</td>
+                </tr>
+                <tr>
+                    <td>Fonction locale</td>
+                    <td>7-9. LocalFunctionCode, FR/EN</td>
+                    <td>EDGAHR.csv</td>
+                </tr>
+                <tr>
+                    <td>Position</td>
+                    <td>10-12. CodePosition, FR/EN</td>
+                    <td>EDGAHR.csv</td>
+                </tr>
+                <tr>
+                    <td>Manager</td>
+                    <td>13-15. ManagerID, LastName, FirstName</td>
+                    <td>EDGAHR.csv</td>
+                </tr>
+                <tr style="background: #f3e5f5;">
+                    <td colspan="3" style="background: #e1bee7; font-weight: bold;">Nomenclature JAD (colonnes 17-27 = 11 colonnes)</td>
+                </tr>
+                <tr>
+                    <td>Position JAD</td>
+                    <td>16-18. CodePosition, LibelleFR, LibelleEN</td>
+                    <td>JAD_JL.csv (niveau 4)</td>
+                </tr>
+                <tr>
+                    <td>Emploi JAD</td>
+                    <td>19-21. CodeEmploi, LibelleFR, LibelleEN</td>
+                    <td>JAD_JL.csv (niveau 3)</td>
+                </tr>
+                <tr>
+                    <td>Famille JAD</td>
+                    <td>22-24. CodeFamille, LibelleFR, LibelleEN</td>
+                    <td>JAD_JL.csv (niveau 2)</td>
+                </tr>
+                <tr>
+                    <td>Domaine JAD</td>
+                    <td>25-27. CodeDomaine, LibelleFR, LibelleEN</td>
+                    <td>JAD_JL.csv (niveau 1)</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h2>9. Gestion des cas exceptionnels</h2>
+        
+        <div class="warning">
+            <strong>Lignes sans Position :</strong> Certaines personnes n'ont pas de code position valide
+        </div>
+        
+        <div class="code-block"><code><span class="f">add_lines_without_position</span>() {
+  <span class="f">echo</span> <span class="s">"Ajout des lignes sans position..."</span>
+
+  <span class="c"># Les personnes sans position sont conservées</span>
+  <span class="c"># mais sans les colonnes Position/Emploi/Famille/Domaine</span>
+
+  <span class="f">cat</span> <span class="s">"$TMP_EDJAD_WITHOUT_POSITION_FILE"</span> <span class="o">>></span> <span class="s">"$TMP_EDJAD_OUTPUT_FILE"</span>
+  <span class="f">check_not_empty</span> <span class="s">"$TMP_EDJAD_OUTPUT_FILE"</span>
+}</code></div>
+        
+        <div class="info-box">
+            <strong>💡 Stratégie :</strong> Conserver les individus sans position (valeurs vides) plutôt que les perdre
+        </div>
+        
+        <h2>10. Finalisation - produce_final_output_file()</h2>
+        
+        <div class="code-block"><code><span class="f">produce_final_output_file</span>() {
+
+  <span class="f">echo</span> <span class="s">"Ajout de l'entête de fichier..."</span>
+
+  <span class="f">sed</span> -i <span class="s">"1i $EDJAD_ENTETE"</span> <span class="s">"$TMP_EDJAD_OUTPUT_FILE"</span>
+
+  <span class="k">if</span> [ <span class="v">$?</span> -ne <span class="n">0</span> ]; <span class="k">then</span>
+    <span class="f">echo</span> <span class="s">"Erreur ajout en-tête"</span>
+    <span class="k">exit</span> <span class="n">5</span>
+  <span class="k">fi</span>
+
+  <span class="f">check_not_empty</span> <span class="s">"$TMP_EDJAD_OUTPUT_FILE"</span>
+
+  <span class="c"># Backup du fichier précédent</span>
+  <span class="f">rm</span> -f <span class="s">"OLD_$EDJAD_OUTPUT_FILE"</span>
+  <span class="f">mv</span> <span class="s">"$EDJAD_OUTPUT_FILE"</span> <span class="s">"OLD_$EDJAD_OUTPUT_FILE"</span>
+
+  <span class="c"># Positionnement du nouveau fichier</span>
+  <span class="f">mv</span> <span class="s">"$TMP_EDJAD_OUTPUT_FILE"</span> <span class="s">"$EDJAD_OUTPUT_FILE"</span>
+
+  <span class="f">echo</span> <span class="s">"Fichier final : $EDJAD_OUTPUT_FILE (27 colonnes)"</span>
+}</code></div>
+        
+        <h2>11. Variables principales</h2>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Variable</th>
+                    <th>Signification</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="background: #e3f2fd;">
+                    <td colspan="3" style="background: #bbdefb; font-weight: bold;">Entrées</td>
+                </tr>
+                <tr>
+                    <td>Fichier</td>
+                    <td><code>EDGAHR_FILE</code></td>
+                    <td>EMPLOYEE_RTL.csv (données RH brutes)</td>
+                </tr>
+                <tr>
+                    <td>Fichier</td>
+                    <td><code>JAD_FILE</code></td>
+                    <td>JAD_JL.csv (hiérarchie job architecture)</td>
+                </tr>
+                <tr style="background: #e8f5e9;">
+                    <td colspan="3" style="background: #c8e6c9; font-weight: bold;">Sorties</td>
+                </tr>
+                <tr>
+                    <td>Fichier</td>
+                    <td><code>EDJAD_OUTPUT_FILE</code></td>
+                    <td>Import_EdJad.csv (FINAL, 27 colonnes)</td>
+                </tr>
+                <tr>
+                    <td>Fichier</td>
+                    <td><code>TMP_EDJAD_OUTPUT_FILE</code></td>
+                    <td>Tmp_Import_EdJad.csv (temporaire)</td>
+                </tr>
+                <tr style="background: #f3e5f5;">
+                    <td colspan="3" style="background: #e1bee7; font-weight: bold;">Référentiels JAD extraits</td>
+                </tr>
+                <tr>
+                    <td>Fichier</td>
+                    <td><code>JAD_EXTRACT_DOMAINE_FILE</code></td>
+                    <td>JAD_EXTRACT_DOMAINE.csv</td>
+                </tr>
+                <tr>
+                    <td>Fichier</td>
+                    <td><code>JAD_EXTRACT_FAMILLE_FILE</code></td>
+                    <td>JAD_EXTRACT_FAMILLE.csv</td>
+                </tr>
+                <tr>
+                    <td>Fichier</td>
+                    <td><code>JAD_EXTRACT_EMPLOI_FILE</code></td>
+                    <td>JAD_EXTRACT_EMPLOI.csv</td>
+                </tr>
+                <tr>
+                    <td>Fichier</td>
+                    <td><code>JAD_EXTRACT_POSITION_FILE</code></td>
+                    <td>JAD_EXTRACT_POSITION.csv</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h2>12. Résumé - Avant et Après</h2>
+        
+        <div style="display: flex; gap: 20px; margin: 20px 0;">
+            <div style="flex: 1; background: #ffe3e3; padding: 20px; border-radius: 8px; border-left: 4px solid #f44336;">
+                <h3 style="margin-top: 0; color: #d32f2f;">AVANT (EDGAHR seul)</h3>
+                <code style="display: block; white-space: pre-wrap; color: #333;">IDpeople;Work_Email;
+Position_Code;
+ManagerID;
+...
+(16 colonnes)</code>
+            </div>
+            
+            <div style="flex: 1; background: #e3f2fd; padding: 20px; border-radius: 8px; border-left: 4px solid #2196f3;">
+                <h3 style="margin-top: 0; color: #1976d2;">APRÈS (EDGAHR + JAD)</h3>
+                <code style="display: block; white-space: pre-wrap; color: #333;">IDpeople;Work_Email;
+Position_Code;Position_LibFR;Position_LibEN;
+Emploi_Code;Emploi_LibFR;Emploi_LibEN;
+Famille_Code;Famille_LibFR;Famille_LibEN;
+Domaine_Code;Domaine_LibFR;Domaine_LibEN;
+...
+(27 colonnes)</code>
+            </div>
+        </div>
+        
+        <div class="highlight-box">
+            <strong>▶ Valeur ajoutée :</strong>
+            <ul>
+                <li>+11 colonnes (nomenclature JAD multilingue)</li>
+                <li>4 niveaux hiérarchiques (du domaine à la position)</li>
+                <li>Labels en français ET anglais pour chaque niveau</li>
+                <li>Permet analyses RH stratégiques par domaine/famille/emploi</li>
+            </ul>
+        </div>
+        
+        <div class="footer">
+            <p>Annexe détaillée – JoinFilesEdJad.sh</p>
+            <p style="margin-top: 5px; color: #95a5a6;">Enrichissement EDGAHR avec nomenclature JAD multilingue</p>
+        </div>
+    </div>
+</body>
+</html>
