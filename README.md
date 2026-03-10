@@ -1,6 +1,8 @@
-Le bug du skip : c’est le React.StrictMode dans main.tsx qui exécute les useEffect deux fois en développement. Du coup, au premier render, currentIndex reste à 0 mais la queue se recharge une deuxième fois — et comme dismiss a déjà été appelé, getVisibleAnnouncementPopups filtre les popups déjà dismissées et retourne une queue plus courte.
-Fix : initialiser currentIndex à 0 à chaque fois que la queue change, et surtout ne pas dismiss au mount mais à la fermeture.
-Voici le hook corrigé :
+Tu as raison. Le problème vient de ma logique — je dismiss tout au mount avant même que l’user ait vu quoi que ce soit. Il faut dismisser au fur et à mesure que l’user voit chaque popup.
+La règle métier correcte :
+	∙	Une popup est “vue” dès qu’elle est affichée à l’écran
+	∙	Donc on dismiss queue[0] au mount (la première est visible immédiatement)
+	∙	On dismiss queue[i] quand on navigue vers elle (next/prev)
 
 import { useEffect, useState, useRef } from 'react'
 import { AnnouncementPopup, dismiss, getVisibleAnnouncementPopups } from '../../core/announcement'
@@ -26,8 +28,10 @@ export function useAnnouncementPopups(): UseAnnouncementPopupsReturn {
     getVisibleAnnouncementPopups()
       .then((popups) => {
         setQueue(popups)
-        // Dismiss tout immédiatement — l'UI est déjà figée
-        popups.forEach((p) => dismiss(p.id))
+        // La première popup est visible immédiatement → on la dismiss
+        if (popups.length > 0) {
+          dismiss(popups[0].id)
+        }
       })
       .catch(() => setQueue([]))
   }, [])
@@ -35,11 +39,19 @@ export function useAnnouncementPopups(): UseAnnouncementPopupsReturn {
   const current = queue[currentIndex] ?? null
 
   const next = () => {
-    if (currentIndex < queue.length - 1) setCurrentIndex((i) => i + 1)
+    if (currentIndex < queue.length - 1) {
+      const nextIndex = currentIndex + 1
+      // La popup suivante devient visible → on la dismiss
+      dismiss(queue[nextIndex].id)
+      setCurrentIndex(nextIndex)
+    }
   }
 
   const prev = () => {
-    if (currentIndex > 0) setCurrentIndex((i) => i - 1)
+    if (currentIndex > 0) {
+      // On revient en arrière — déjà vue, déjà dismissée, rien à faire
+      setCurrentIndex((i) => i - 1)
+    }
   }
 
   const finish = () => setQueue([])
@@ -48,32 +60,9 @@ export function useAnnouncementPopups(): UseAnnouncementPopupsReturn {
 }
 
 
-Le useRef(false) empêche le double-appel du StrictMode. La queue est figée dès le premier fetch, dismiss se fait juste après — l’UI ne réagit pas au localStorage, seulement à l’état local.
-Et pour le Modal, remplace les dots et les chevrons :
-
-{/* Footer */}
-<div className="announcement-popup__footer flex justify-between items-center mt-4">
-
-  <button
-    onClick={onPrev}
-    disabled={isFirst}
-    className={`btn ${isFirst ? 'invisible' : ''}`}
-  >
-    <i className="fa fa-chevron-left" />
-  </button>
-
-  <span className="text-sm text-gray-500">
-    {currentIndex + 1}/{total}
-  </span>
-
-  {isLast ? (
-    <button onClick={onFinish} className="btn btn--primary">
-      Terminer
-    </button>
-  ) : (
-    <button onClick={onNext} className="btn">
-      <i className="fa fa-chevron-right" />
-    </button>
-  )}
-
-</div>
+Comportement attendu :
+	∙	Mount avec 4 popups → dismiss popup[0] → affiche 1/4
+	∙	Reload → 3 popups non vues → affiche 1/3 ✅
+	∙	Next → dismiss popup[1] → affiche 2/3 (dans la queue figée)
+	∙	Reload → 2 popups → 1/2 ✅
+	∙	Prev → déjà dismissée → rien à faire, juste navigation UI ✅​​​​​​​​​​​​​​​​
