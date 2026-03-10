@@ -1,3 +1,4 @@
+´´´
 import React from ‘react’;
 import BasicModal from ‘./BasicModal’
 import { AnnouncementPopup } from ‘../../core/announcement’
@@ -70,3 +71,4 @@ disabled={current === total && false}
 </BasicModal>
 )
 }
+´´´
