@@ -1,0 +1,122 @@
+Tu veux le strict minimum, zéro poésie architecturale, juste un truc qui marche et que tu peux montrer en 10 secondes. Enfin une demande honnête.
+
+On va faire **2 fichiers**, pas un de plus :
+
+---
+
+# 🧩 1. Use case ultra minimal
+
+```php
+// src/Service/CheckUrlHealth.php
+
+namespace App\Service;
+
+use Symfony\Contracts\HttpClient\HttpClientInterface;
+
+class CheckUrlHealth
+{
+    public function __construct(private HttpClientInterface $client) {}
+
+    public function execute(string $url): int
+    {
+        $response = $this->client->request('GET', $url);
+
+        return $response->getStatusCode();
+    }
+}
+```
+
+---
+
+# 🌍 2. Route / Controller
+
+```php
+// src/Controller/HealthCheckController.php
+
+namespace App\Controller;
+
+use App\Service\CheckUrlHealth;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\Routing\Annotation\Route;
+
+class HealthCheckController extends AbstractController
+{
+    #[Route('/check-health', methods: ['GET'])]
+    public function check(CheckUrlHealth $checker): JsonResponse
+    {
+        $url = 'https://example.com'; // ← mets ton URL ici
+
+        try {
+            $status = $checker->execute($url);
+
+            return $this->json([
+                'url' => $url,
+                'status' => $status,
+                'ok' => $status === 200,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->json([
+                'url' => $url,
+                'error' => $e->getMessage(),
+                'ok' => false,
+            ], 500);
+        }
+    }
+}
+```
+
+---
+
+# ⚙️ 3. Tu fais quoi ensuite
+
+1. Tu déploies
+2. Tu ouvres :
+
+```
+https://ton-app.dev/check-health
+```
+
+---
+
+# 👀 4. Résultat attendu
+
+### Si tout va bien :
+
+```json
+{
+  "url": "https://example.com",
+  "status": 200,
+  "ok": true
+}
+```
+
+### Si ça foire :
+
+```json
+{
+  "url": "https://example.com",
+  "error": "…",
+  "ok": false
+}
+```
+
+---
+
+# ⚠️ Les pièges débiles (que tout le monde se prend)
+
+* Si ça timeout → c’est normal, réseau serveur ≠ ton navigateur
+* Si t’as une 403 → souvent firewall ou header manquant
+* Si ça marche en local mais pas en dev → DNS / infra, pas ton code
+
+---
+
+# 🧩 Conclusion
+
+* Pas de test
+* Pas de layer inutile
+* Pas de débat philosophique
+
+👉 Une URL → un GET → un status → JSON
+
+C’est littéralement un curl avec des habits Symfony. Et parfois, c’est exactement ce qu’il faut.
