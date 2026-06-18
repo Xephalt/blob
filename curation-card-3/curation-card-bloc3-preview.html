@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Curation Card – Bloc 3</title>
+<style>
+  body {
+    background: #e5e5e5;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 32px;
+    box-sizing: border-box;
+  }
+
+  /* ── CARD ── */
+  .curation-card-3 {
+    width: clamp(6rem, 100%, 320px);
+    aspect-ratio: 1 / 1;
+    min-height: 6rem;
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: default;
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    color: inherit;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+
+  .curation-card-3.is-clickable { cursor: pointer; }
+  .curation-card-3.is-clickable:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+  }
+
+  /* ── CONTENU PRINCIPAL ── */
+  .card3__content {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    flex: 1;
+    min-height: 0;
+    gap: 10px;
+  }
+
+  /* ── HEADER : médaillon + nom + poste — répartition 30/70 ── */
+  .card3__header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+
+  /* Médaillon circulaire — 30% de la largeur de la carte */
+  .card3__avatar {
+    width: 30%;
+    aspect-ratio: 1 / 1;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #bdbdbd;
+    display: block;
+  }
+
+  .card3__identity {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  /* Zone texte 1 : nom — titre, 2 lignes max */
+  .card3__name {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1a1a1a;
+    line-height: 1.3;
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Zone texte 2 : poste — optionnel, petit + léger */
+  .card3__role {
+    font-size: 13px;
+    font-weight: 400;
+    color: #777;
+    line-height: 1.3;
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Zone texte 3 : citation — même taille que titre actualités, 150 chars max */
+  .card3__quote {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1a1a1a;
+    line-height: 1.45;
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Lien */
+  .card3__link {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: #2e7d32;
+    text-decoration: underline;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+  }
+
+  .card3__link:hover {
+    color: #1b5e20;
+    text-decoration-thickness: 2px;
+  }
+
+  .card3__link::before {
+    content: '';
+    display: inline-block;
+    flex-shrink: 0;
+    width: 0; height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 6px solid #2e7d32;
+  }
+
+  /* Footer */
+  .card3__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .card3__date {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #666;
+    white-space: nowrap;
+  }
+
+  .card3__picto {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: #0077b5; /* LinkedIn blue pour l'exemple */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .card3__picto img { width: 100%; height: 100%; object-fit: cover; }
+  .card3__picto svg { width: 16px; height: 16px; fill: #fff; }
+</style>
+</head>
+<body>
+
+<!-- Carte 1 : nominale, avec poste, cliquable -->
+<a class="curation-card-3 is-clickable" href="https://example.com" target="_blank" rel="noopener noreferrer">
+  <div class="card3__content">
+
+    <!-- Header : médaillon + nom + poste -->
+    <div class="card3__header">
+      <img class="card3__avatar"
+        src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%'%3E%3Ccircle cx='50%' cy='50%' r='50%' fill='%23bdbdbd'/%3E%3Ctext x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial' font-size='20' fill='%23fff'%3EML%3C/text%3E%3C/svg%3E"
+        alt="Marie Laperdrix" />
+      <div class="card3__identity">
+        <p class="card3__name">Marie Laperdrix</p>
+        <p class="card3__role">Responsable de Société, Histoire et Prospectives</p>
+      </div>
+    </div>
+
+    <!-- Zone texte 3 : citation -->
+    <p class="card3__quote">
+      « Un extrait de mon échange avec Brut. sur l'histoire de cette loi. Au départ nous en avions discuté plus de 45 min, c'est donc un court extrait !
+    </p>
+
+    <!-- Lien -->
+    <span class="card3__link">Lire le post LinkedIn de Marie</span>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="card3__footer">
+    <div class="card3__date">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/>
+        <line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+      7 Oct 2025
+    </div>
+    <div class="card3__picto">
+      <!-- Icône LinkedIn placeholder -->
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
+        <rect x="2" y="9" width="4" height="12"/>
+        <circle cx="4" cy="4" r="2"/>
+      </svg>
+    </div>
+  </div>
+</a>
+
+<!-- Carte 2 : sans poste (zone texte 2 absente), nom prend 2 lignes -->
+<a class="curation-card-3 is-clickable" href="https://example.com" target="_blank" rel="noopener noreferrer">
+  <div class="card3__content">
+
+    <div class="card3__header">
+      <img class="card3__avatar"
+        src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%'%3E%3Ccircle cx='50%' cy='50%' r='50%' fill='%23bdbdbd'/%3E%3Ctext x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial' font-size='20' fill='%23fff'%3E?%3C/text%3E%3C/svg%3E"
+        alt="Personne" />
+      <div class="card3__identity">
+        <p class="card3__name">Contributeur sans poste renseigné</p>
+        <!-- pas de .card3__role ici -->
+      </div>
+    </div>
+
+    <p class="card3__quote">
+      « Texte court sans description de poste. Le nom peut prendre deux lignes pour occuper l'espace. »
+    </p>
+
+    <span class="card3__link">Lire le post complet</span>
+
+  </div>
+
+  <div class="card3__footer">
+    <div class="card3__date">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/>
+        <line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+      15 Nov 2025
+    </div>
+    <div class="card3__picto">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
+        <rect x="2" y="9" width="4" height="12"/>
+        <circle cx="4" cy="4" r="2"/>
+      </svg>
+    </div>
+  </div>
+</a>
+
+<!-- Carte 3 : non cliquable -->
+<div class="curation-card-3">
+  <div class="card3__content">
+
+    <div class="card3__header">
+      <img class="card3__avatar"
+        src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%'%3E%3Ccircle cx='50%' cy='50%' r='50%' fill='%23bdbdbd'/%3E%3Ctext x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial' font-size='20' fill='%23fff'%3EJD%3C/text%3E%3C/svg%3E"
+        alt="Jean Dupont" />
+      <div class="card3__identity">
+        <p class="card3__name">Jean Dupont</p>
+        <p class="card3__role">Directeur général</p>
+      </div>
+    </div>
+
+    <p class="card3__quote">
+      « Carte non cliquable, pas d'animation au survol. »
+    </p>
+
+    <span class="card3__link">Lire l'article</span>
+
+  </div>
+
+  <div class="card3__footer">
+    <div class="card3__date">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/>
+        <line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+      1 Jan 2026
+    </div>
+    <div class="card3__picto">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
+        <rect x="2" y="9" width="4" height="12"/>
+        <circle cx="4" cy="4" r="2"/>
+      </svg>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

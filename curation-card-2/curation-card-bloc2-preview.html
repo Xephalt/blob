@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Curation Card 2 – Calibrated</title>
+<style>
+  body {
+    background: #e5e5e5;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 32px;
+    box-sizing: border-box;
+  }
+
+  .curation-card-2 {
+    width: clamp(6rem, 100%, 320px);
+    aspect-ratio: 1 / 1;
+    min-height: 6rem;
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: default;
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    color: inherit;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+
+  .curation-card-2.is-clickable { cursor: pointer; }
+  .curation-card-2.is-clickable:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+  }
+
+  .card2__content {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    flex: 1;
+    min-height: 0;
+    gap: 8px;
+  }
+
+  .card2__textbox {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;      /* ← augmenté pour mieux séparer */
+    overflow: hidden;
+  }
+
+  /* ── POLICES CALIBRÉES ── */
+  .card2__title {
+    font-size: 16px;      /* ← augmenté de 14px à 16px, bold */
+    font-weight: 700;
+    color: #1a1a1a;
+    line-height: 1.4;
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .card2__description {
+    font-size: 14px;      /* ← augmenté de 12px à 14px */
+    font-weight: 400;
+    color: #555;
+    line-height: 1.5;
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 7;      /* ← 7 lignes pour occuper l'espace dispo */
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .card2__link {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: #2e7d32;
+    text-decoration: underline;
+    font-size: 13px;      /* standard */
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+  }
+
+  .card2__link::before {
+    content: '';
+    display: inline-block;
+    flex-shrink: 0;
+    width: 0; height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 6px solid #2e7d32;
+  }
+
+  .card2__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .card2__date {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #666;
+    white-space: nowrap;
+  }
+
+  .card2__picto {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: #2e7d32;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .card2__picto svg { width: 14px; height: 14px; fill: #fff; }
+</style>
+</head>
+<body>
+
+<a class="curation-card-2 is-clickable" href="https://example.com" target="_blank" rel="noopener noreferrer">
+  <div class="card2__content">
+    <div class="card2__textbox">
+      <p class="card2__title">Lorem ipsum dolor sit amet, consectetur caecat</p>
+      <p class="card2__description">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+    </div>
+    <span class="card2__link">60 ans de liberté financière</span>
+  </div>
+  <div class="card2__footer">
+    <div class="card2__date">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+      7 Oct 2025
+    </div>
+    <div class="card2__picto"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+  </div>
+</a>
+
+<a class="curation-card-2 is-clickable" href="https://example.com" target="_blank" rel="noopener noreferrer">
+  <div class="card2__content">
+    <div class="card2__textbox">
+      <p class="card2__title">Titre très long qui doit passer sur exactement deux lignes avant d'être tronqué</p>
+      <p class="card2__description">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+    </div>
+    <span class="card2__link">Un lien qui dépasse peut-être un petit peu</span>
+  </div>
+  <div class="card2__footer">
+    <div class="card2__date">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+      15 Nov 2025
+    </div>
+    <div class="card2__picto"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+  </div>
+</a>
+
+<div class="curation-card-2">
+  <div class="card2__content">
+    <div class="card2__textbox">
+      <p class="card2__title">Carte non cliquable</p>
+      <p class="card2__description">Description courte sans interaction au survol.</p>
+    </div>
+    <span class="card2__link">Lien source</span>
+  </div>
+  <div class="card2__footer">
+    <div class="card2__date">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+      1 Jan 2026
+    </div>
+    <div class="card2__picto"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+  </div>
+</div>
+
+</body>
+</html>
