@@ -1,0 +1,74 @@
+OK deux sujets distincts.
+
+**Sur le layout cassé** — j'ai besoin de voir le code HTML généré par `the_favorites_button()` pour comprendre ce qui casse ton flex. Est-ce que tu peux faire clic droit → Inspecter sur une carte cassée et me dire ce que le plugin génère comme HTML dans le `<span style="display:none;position:absolute;">` ?
+
+---
+
+**Sur la logique like** — je comprends maintenant. Le plugin ne toggle pas, il incrémente toujours. Donc mon cookie qui simule un toggle est faux par rapport au comportement réel du plugin. 
+
+La logique correcte est :
+
+```javascript
+document.addEventListener('DOMContentLoaded', function() {
+
+    document.querySelectorAll('.meta-like').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+
+            var countEl = el.querySelector('.everylang-count');
+            var icon = el.querySelector('.bi-heart, .bi-heart-fill');
+
+            // Déclenche le plugin (AJAX réel)
+            var btn = el.nextElementSibling.querySelector('.simplefavorite-button');
+            if (btn) btn.click();
+
+            // Toujours +1, jamais -1 — cohérent avec le comportement réel du plugin
+            if (countEl) countEl.textContent = parseInt(countEl.textContent) + 1;
+
+            // Cœur vert, mais on ne toggle pas — on ne peut pas unlike
+            if (icon) {
+                icon.classList.remove('bi-heart');
+                icon.classList.add('bi-heart-fill');
+            }
+            el.style.color = '#2e7d32';
+        });
+    });
+});
+```
+
+Pas de cookie, pas de toggle, pas de -1. Juste +1 et cœur vert au clic. Cohérent avec ce que fait réellement le plugin en base.
+
+Pour le layout, montre-moi le HTML généré et je règle ça.
+
+Je vois le problème de layout. Le `<span style="display:none;position:absolute;">` est placé **en dehors** du `<div class="bnp_cp_meta">` dans le flux, ce qui casse le flex de la carte.
+
+Regarde la structure HTML : ton span caché se retrouve entre le `.meta-like` et le `.meta-temp` (date), il sort du conteneur flex.
+
+**Fix layout** — il faut que le bouton caché soit **à l'intérieur** du `.meta-like`, pas après :
+
+```php
+<?php if($post_type!="page") { ?>
+<span class="meta-like" style="position: relative; z-index: 2; cursor: pointer;" 
+      data-post-id="<?php echo get_the_ID(); ?>">
+    <i class="bi bi-heart" aria-hidden="true"></i>
+    <span class="sr-only"><?php _e("Nombre de likes :", 'bnpp_blocks'); ?></span>
+    <span class="everylang-count"><?php echo get_everylang_favorites_count(get_the_ID()); ?></span> likes
+    <span style="display:none;position:absolute;">
+        <?php the_favorites_button(get_the_ID()); ?>
+    </span>
+</span>
+<?php } ?>
+```
+
+Et dans le JS, change le sélecteur pour chercher le bouton **à l'intérieur** du span :
+
+```javascript
+// AVANT
+var btn = el.nextElementSibling.querySelector('.simplefavorite-button');
+
+// APRÈS
+var btn = el.querySelector('.simplefavorite-button');
+```
+
+Le bouton caché est maintenant enfant du `.meta-like`, plus dans le flux flex de la carte.
