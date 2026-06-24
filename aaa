@@ -1,0 +1,51 @@
+Compris. Tu veux garder `get_everylang_favorites_count()` pour l'affichage du compteur (somme toutes langues), mais brancher le clic sur `the_favorites_button()` du plugin pour l'action AJAX.
+
+Le truc c'est que tu ne peux pas facilement dissocier le bouton cliquable du compteur affiché par `the_favorites_button()` sans hackers le plugin.
+
+**La solution la plus propre** : garder ton span actuel pour l'affichage, et juste déclencher l'action AJAX du plugin au clic via JS. Le plugin expose un event sur le bouton caché.
+
+Voici ce que je propose :
+
+```php
+<?php if($post_type!="page") { ?>
+<span class="meta-like" style="position: relative; z-index: 2; cursor: pointer;" 
+      data-post-id="<?php echo get_the_ID(); ?>">
+    <i class="bi bi-heart" aria-hidden="true"></i>
+    <span class="sr-only"><?php _e("Nombre de likes :", 'bnpp_blocks'); ?></span>
+    <span class="everylang-count"><?php echo get_everylang_favorites_count(get_the_ID()); ?></span> likes
+</span>
+<!-- Bouton plugin caché pour l'action AJAX -->
+<span style="display:none;">
+    <?php the_favorites_button(get_the_ID()); ?>
+</span>
+<?php } ?>
+```
+
+Puis un petit script JS qui délègue le clic :
+
+```javascript
+document.querySelectorAll('.meta-like').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+        e.stopPropagation(); // bloque le stretched-link
+        var postId = el.getAttribute('data-post-id');
+        // Déclenche le clic sur le bouton caché du plugin
+        var btn = el.nextElementSibling.querySelector('.simplefavorite-button');
+        if (btn) {
+            btn.click();
+            // Mise à jour optimiste du compteur
+            var countEl = el.querySelector('.everylang-count');
+            if (countEl) {
+                countEl.textContent = parseInt(countEl.textContent) + 1;
+            }
+        }
+    });
+});
+```
+
+**Ce que ça fait :**
+- Affichage → `get_everylang_favorites_count()` (toutes langues)
+- Clic → délègue au bouton caché du plugin → AJAX natif du plugin se déclenche
+- `e.stopPropagation()` → bloque le `stretched-link`
+- Update optimiste +1 immédiat à l'affichage
+
+**Limite honnête** : le -1 si on unlike n'est pas géré dans l'update optimiste. Et si la page est cachée, le compteur affiché au rechargement sera celui de `get_everylang_favorites_count()` donc cohérent. C'est acceptable ?
