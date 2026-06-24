@@ -1,14 +1,11 @@
-Pas de souci. Le problème des 3 requêtes est clair : ton script s'exécute sur **tous** les `.bnpp-like-btn` de la page au clic sur n'importe lequel, pas seulement celui cliqué.
-
-C'est un bug classique — `forEach` + `fetch` sans isolation. Remplace le JS par ça :
+Parfait, j'ai tout ce qu'il me faut. Le nonce c'est `favorites_data.nonce` et l'action AJAX du plugin c'est `favorite` (sans "s"). Corrige le JS :
 
 ```javascript
 document.addEventListener('DOMContentLoaded', function() {
 
-    // Récupère le nonce du plugin directement depuis ses variables JS
-    var pluginData = window.simplefavorites || window.favorites_params || {};
-    var ajaxUrl = pluginData.ajax_url || '/wp-admin/admin-ajax.php';
-    var nonce   = pluginData.nonce || '';
+    var pluginData = window.favorites_data || {};
+    var ajaxUrl    = pluginData.ajaxurl || '/wp-admin/admin-ajax.php';
+    var nonce      = pluginData.nonce  || '';
 
     document.querySelectorAll('.bnpp-like-btn').forEach(function(el) {
 
@@ -16,7 +13,6 @@ document.addEventListener('DOMContentLoaded', function() {
             e.stopPropagation();
             e.preventDefault();
 
-            // Stoppe si déjà en cours
             if (el.dataset.pending === '1') return;
             el.dataset.pending = '1';
 
@@ -25,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
             var icon    = el.querySelector('i');
 
             var formData = new FormData();
-            formData.append('action', 'favorites');
+            formData.append('action', 'favorite');   // ← sans "s"
             formData.append('post_id', postId);
             formData.append('site_id', '1');
             formData.append('nonce', nonce);
@@ -38,8 +34,9 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 el.dataset.pending = '0';
-                if (data && data.count !== undefined) {
-                    if (countEl) countEl.textContent = data.count;
+                // Remplace l'optimiste par le vrai compteur serveur
+                if (data && data.count !== undefined && countEl) {
+                    countEl.textContent = data.count;
                 }
             })
             .catch(function() {
@@ -58,12 +55,4 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 ```
 
-Le `data-pending` empêche les clics multiples et donc les requêtes multiples.
-
-Mais **le vrai fix des 3 requêtes** c'est de confirmer le nom de l'objet JS que le plugin expose. Lance ça dans la console sur ta page :
-
-```javascript
-Object.keys(window).filter(k => k.toLowerCase().includes('favorite') || k.toLowerCase().includes('simple'))
-```
-
-Ça me donnera le nom exact et je pourrai corriger `ajaxUrl` et `nonce` pour que les requêtes passent en 200 au lieu de 400.
+La seule différence clé : `action: 'favorite'` sans "s". C'est ça qui causait les 400. Le plugin enregistre son handler AJAX sous `wp_ajax_nopriv_favorite` et `wp_ajax_favorite`.
