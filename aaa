@@ -1,52 +1,8 @@
-document.addEventListener('DOMContentLoaded', function() {
-
-    var pluginData = window.favorites_data || {};
-    var ajaxUrl    = pluginData.ajaxurl || '/wp-admin/admin-ajax.php';
-
-    document.querySelectorAll('.bnpp-like-btn').forEach(function(el) {
-
-        el.addEventListener('click', function(e) {
-            e.stopPropagation();
-            e.preventDefault();
-
-            if (el.dataset.pending === '1') return;
-            el.dataset.pending = '1';
-
-            var postId  = el.getAttribute('data-post-id');
-            var countEl = el.querySelector('.everylang-count');
-            var icon    = el.querySelector('i');
-
-            var formData = new FormData();
-            formData.append('action', 'favorites_favorite');
-            formData.append('postid', postId);           // sans underscore
-            formData.append('siteid', '1');              // sans underscore
-            formData.append('status', 'active');
-            formData.append('user_consent_accepted', 'false');
-
-            fetch(ajaxUrl, {
-                method: 'POST',
-                body: formData,
-                credentials: 'same-origin'
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                el.dataset.pending = '0';
-                // Le vrai total est dans data.posts[postId].total
-                if (data && data.posts && data.posts[postId]) {
-                    if (countEl) countEl.textContent = data.posts[postId].total;
-                }
-            })
-            .catch(function() {
-                el.dataset.pending = '0';
-            });
-
-            // Optimiste UI
-            if (countEl) countEl.textContent = parseInt(countEl.textContent) + 1;
-            if (icon) {
-                icon.classList.remove('bi-heart');
-                icon.classList.add('bi-heart-fill');
-            }
-            el.style.color = '#2e7d32';
-        });
-    });
-});
+.then(function(data) {
+    el.dataset.pending = '0';
+    el.dataset.liked = '1';          // ← verrouille définitivement
+    el.style.pointerEvents = 'none'; // ← désactive tous les clics
+    if (data && data.posts && data.posts[postId]) {
+        if (countEl) countEl.textContent = data.posts[postId].total;
+    }
+})
