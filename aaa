@@ -1,72 +1,69 @@
-Je vois le fichier complet. Le problème de layout est clair : ton `<span class="meta-like">` et le `<span style="display:none;position:absolute;">` sont **en dehors** du `<div class="bnp_cp_meta">` — ils sont au niveau du `<div class="height-100 p-4 bg-white boite-text">`, ce qui casse tout.
+Pas de souci. Le problème des 3 requêtes est clair : ton script s'exécute sur **tous** les `.bnpp-like-btn` de la page au clic sur n'importe lequel, pas seulement celui cliqué.
 
-Et le +12 au clic c'est parce que `the_favorites_button()` enregistre ses propres listeners JS qui se cumulent.
-
-**Plan simple et propre — on vire complètement `the_favorites_button()`** et on appelle l'AJAX du plugin directement :
-
-```php
-<?php if($post_type!="page") { ?>
-<span class="meta-like bnpp-like-btn" 
-      style="position: relative; z-index: 2; cursor: pointer;"
-      data-post-id="<?php echo get_the_ID(); ?>"
-      data-nonce="<?php echo wp_create_nonce('favorites-nonce'); ?>">
-    <i class="bi bi-heart" aria-hidden="true"></i>
-    <span class="sr-only"><?php _e("Nombre de likes :", 'bnpp_blocks'); ?></span>
-    <span class="everylang-count"><?php echo get_everylang_favorites_count(get_the_ID()); ?></span> likes
-</span>
-<?php } ?>
-```
-
-Et le JS — appel AJAX direct au plugin, sans bouton caché :
+C'est un bug classique — `forEach` + `fetch` sans isolation. Remplace le JS par ça :
 
 ```javascript
 document.addEventListener('DOMContentLoaded', function() {
+
+    // Récupère le nonce du plugin directement depuis ses variables JS
+    var pluginData = window.simplefavorites || window.favorites_params || {};
+    var ajaxUrl = pluginData.ajax_url || '/wp-admin/admin-ajax.php';
+    var nonce   = pluginData.nonce || '';
+
     document.querySelectorAll('.bnpp-like-btn').forEach(function(el) {
+
         el.addEventListener('click', function(e) {
             e.stopPropagation();
             e.preventDefault();
 
-            var postId = el.getAttribute('data-post-id');
-            var nonce  = el.getAttribute('data-nonce');
+            // Stoppe si déjà en cours
+            if (el.dataset.pending === '1') return;
+            el.dataset.pending = '1';
+
+            var postId  = el.getAttribute('data-post-id');
             var countEl = el.querySelector('.everylang-count');
             var icon    = el.querySelector('i');
 
-            // Appel AJAX direct au plugin Simple Favorites
             var formData = new FormData();
             formData.append('action', 'favorites');
             formData.append('post_id', postId);
             formData.append('site_id', '1');
             formData.append('nonce', nonce);
 
-            fetch(window.ajaxurl || '/wp-admin/admin-ajax.php', {
+            fetch(ajaxUrl, {
                 method: 'POST',
                 body: formData,
                 credentials: 'same-origin'
             })
             .then(function(r) { return r.json(); })
             .then(function(data) {
+                el.dataset.pending = '0';
                 if (data && data.count !== undefined) {
-                    // Met à jour avec le vrai compteur retourné par le plugin
                     if (countEl) countEl.textContent = data.count;
                 }
+            })
+            .catch(function() {
+                el.dataset.pending = '0';
             });
 
-            // Update optimiste UI seulement
+            // Optimiste UI
             if (countEl) countEl.textContent = parseInt(countEl.textContent) + 1;
             if (icon) {
                 icon.classList.remove('bi-heart');
                 icon.classList.add('bi-heart-fill');
-                el.style.color = '#2e7d32';
             }
+            el.style.color = '#2e7d32';
         });
     });
 });
 ```
 
-**Ce que ça change :**
-- Zero bouton caché → layout intact
-- Appel AJAX direct → pas de cascade d'events
-- Le vrai compteur du plugin écrase l'optimiste après réponse serveur
-- La couleur verte ne s'applique qu'à l'icône cœur, pas à toute la carte
+Le `data-pending` empêche les clics multiples et donc les requêtes multiples.
 
-**Pour le layout** — assure-toi que ce span est bien **à l'intérieur** du `<div class="bnp_cp_meta">`, pas en dehors. D'après ce que je vois dans ton screenshot ligne 48-57, il est actuellement après le `</div>` de `bnp_cp_meta`. Remets-le dedans.
+Mais **le vrai fix des 3 requêtes** c'est de confirmer le nom de l'objet JS que le plugin expose. Lance ça dans la console sur ta page :
+
+```javascript
+Object.keys(window).filter(k => k.toLowerCase().includes('favorite') || k.toLowerCase().includes('simple'))
+```
+
+Ça me donnera le nom exact et je pourrai corriger `ajaxUrl` et `nonce` pour que les requêtes passent en 200 au lieu de 400.
