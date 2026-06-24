@@ -1,0 +1,97 @@
+Je vois deux problèmes distincts :
+
+**Problème 1 — Layout cassé** : `the_favorites_button()` injecte un `<div>` ou un block-level element dans ton flux, même caché avec `display:none`, ça peut casser le flex/grid de la carte. 
+
+**Problème 2 — Compteur faux** : ton update optimiste +1 inconditionnel est faux, il faut lire l'état du cookie du plugin pour savoir si déjà liké.
+
+**Fix layout** : remplace le span caché par un rendu inline forcé :
+
+```php
+<?php if($post_type!="page") { ?>
+<span class="meta-like" style="position: relative; z-index: 2; cursor: pointer;" 
+      data-post-id="<?php echo get_the_ID(); ?>">
+    <i class="bi bi-heart" aria-hidden="true"></i>
+    <span class="sr-only"><?php _e("Nombre de likes :", 'bnpp_blocks'); ?></span>
+    <span class="everylang-count"><?php echo get_everylang_favorites_count(get_the_ID()); ?></span> likes
+</span>
+<span style="display:none;position:absolute;">
+    <?php the_favorites_button(get_the_ID()); ?>
+</span>
+<?php } ?>
+```
+
+**Fix JS — cœur rempli + état réel depuis cookie** :
+
+```javascript
+document.addEventListener('DOMContentLoaded', function() {
+
+    // Lit le cookie simplefavorites pour savoir quels posts sont likés
+    function getLikedPosts() {
+        var cookie = document.cookie.split(';').find(c => c.trim().startsWith('simplefavorites='));
+        if (!cookie) return [];
+        try {
+            return JSON.parse(decodeURIComponent(cookie.split('=')[1]));
+        } catch(e) { return []; }
+    }
+
+    function saveLikedPosts(posts) {
+        var expires = new Date();
+        expires.setFullYear(expires.getFullYear() + 1);
+        document.cookie = 'simplefavorites=' + encodeURIComponent(JSON.stringify(posts)) 
+            + '; expires=' + expires.toUTCString() + '; path=/';
+    }
+
+    // Init état des cœurs au chargement
+    var liked = getLikedPosts();
+    document.querySelectorAll('.meta-like').forEach(function(el) {
+        var postId = parseInt(el.getAttribute('data-post-id'));
+        var icon = el.querySelector('.bi-heart, .bi-heart-fill');
+        if (liked.indexOf(postId) !== -1 && icon) {
+            icon.classList.remove('bi-heart');
+            icon.classList.add('bi-heart-fill');
+            el.style.color = '#2e7d32'; // vert
+        }
+    });
+
+    // Gestion du clic
+    document.querySelectorAll('.meta-like').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+
+            var postId = parseInt(el.getAttribute('data-post-id'));
+            var liked = getLikedPosts();
+            var countEl = el.querySelector('.everylang-count');
+            var icon = el.querySelector('.bi-heart, .bi-heart-fill');
+            var alreadyLiked = liked.indexOf(postId) !== -1;
+
+            // Déclenche le plugin (AJAX réel)
+            var btn = el.nextElementSibling.querySelector('.simplefavorite-button');
+            if (btn) btn.click();
+
+            // Update optimiste
+            if (alreadyLiked) {
+                liked.splice(liked.indexOf(postId), 1);
+                if (countEl) countEl.textContent = Math.max(0, parseInt(countEl.textContent) - 1);
+                if (icon) { icon.classList.remove('bi-heart-fill'); icon.classList.add('bi-heart'); }
+                el.style.color = '';
+            } else {
+                liked.push(postId);
+                if (countEl) countEl.textContent = parseInt(countEl.textContent) + 1;
+                if (icon) { icon.classList.remove('bi-heart'); icon.classList.add('bi-heart-fill'); }
+                el.style.color = '#2e7d32';
+            }
+
+            saveLikedPosts(liked);
+        });
+    });
+});
+```
+
+**Ce que ça règle :**
+- Layout : `position:absolute` sur le bouton caché le sort du flux
+- Cœur rempli (`bi-heart-fill`) au clic et au chargement si déjà liké
+- Toggle like/unlike cohérent avec le cookie du plugin
+- Compteur optimiste correct dans les deux sens
+
+Le cookie que je lis/écris est le même que celui du plugin (`simplefavorites`), donc les états sont synchronisés. À tester.
