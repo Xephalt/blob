@@ -1,15 +1,5 @@
-// Simule exactement ce qu'on envoie
-var fd = new FormData();
-fd.append('action', 'favorite');
-fd.append('post_id', '69782');
-fd.append('site_id', '1');
-fd.append('nonce', window.favorites_data.nonce);
+// Dans la console, trouve le vrai nom d'action
+document.querySelectorAll('[data-action]').forEach(el => console.log(el.dataset))
 
-fetch(window.favorites_data.ajaxurl, {
-    method: 'POST',
-    body: fd,
-    credentials: 'same-origin'
-})
-.then(r => r.text())
-.then(d => console.log('response:', d))
-.catch(e => console.log('error:', e));
+// Ou cherche dans le source HTML
+document.querySelectorAll('.simplefavorite-button').forEach(el => console.log(el.outerHTML))
