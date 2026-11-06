@@ -1,0 +1,6 @@
+Host gitlab.TON-ENTREPRISE
+  User git
+  IdentityFile ~/.ssh/id_ed25519_work
+  IdentitiesOnly yes
+  AddKeysToAgent yes
+  UseKeychain yes

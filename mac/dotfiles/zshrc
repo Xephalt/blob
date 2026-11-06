@@ -1,0 +1,45 @@
+source ~/.zshrc.brew
+export PATH="$(brew --prefix libpq)/bin:$PATH"
+
+HISTSIZE=50000; SAVEHIST=50000; HISTFILE=~/.zsh_history
+setopt SHARE_HISTORY HIST_IGNORE_ALL_DUPS HIST_IGNORE_SPACE
+
+autoload -Uz compinit && compinit
+zstyle ':completion:*' menu select
+
+eval "$(jenv init -)"
+eval "$(mise activate zsh)"
+
+source <(fzf --zsh)
+eval "$(zoxide init zsh)"
+eval "$(atuin init zsh --disable-up-arrow)"
+eval "$(oh-my-posh init zsh --config ~/.config/oh-my-posh/tokyonight_stormx.omp.json)"
+
+source "$(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+source "$(brew --prefix)/share/zsh-you-should-use/you-should-use.plugin.zsh"
+source "$(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+
+ZSH_HIGHLIGHT_STYLES[command]='fg=cyan,bold'
+ZSH_HIGHLIGHT_STYLES[builtin]='fg=cyan,bold'
+ZSH_HIGHLIGHT_STYLES[alias]='fg=cyan,bold'
+ZSH_HIGHLIGHT_STYLES[function]='fg=cyan,bold'
+ZSH_HIGHLIGHT_STYLES[single-hyphen-option]='fg=yellow,bold'
+ZSH_HIGHLIGHT_STYLES[double-hyphen-option]='fg=yellow,bold'
+ZSH_HIGHLIGHT_STYLES[commandseparator]='fg=white,bold'
+ZSH_HIGHLIGHT_STYLES[redirection]='fg=white,bold'
+ZSH_HIGHLIGHT_STYLES[assign]='fg=green,bold'
+ZSH_HIGHLIGHT_STYLES[dollar-double-quoted-argument]='fg=green,bold'
+ZSH_HIGHLIGHT_STYLES[single-quoted-argument]='fg=red,bold'
+ZSH_HIGHLIGHT_STYLES[double-quoted-argument]='fg=red,bold'
+
+alias ls='eza --icons --group-directories-first'
+alias ll='eza -la --icons --git --group-directories-first'
+alias lt='eza --tree --level=2 --icons'
+alias cat='bat --paging=never'
+alias g='git'
+alias lg='lazygit'
+alias ld='lazydocker'
+alias dc='docker compose'
+mkcd() { mkdir -p "$1" && cd "$1"; }
+
+[ -f ~/.zshrc.local ] && source ~/.zshrc.local
